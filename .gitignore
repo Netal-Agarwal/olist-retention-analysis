@@ -221,3 +221,32 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---------------------------------------------------------------
+# Project-specific rules (Olist Retention Analysis)
+# ---------------------------------------------------------------
+# Secrets: the real .env holds the DB password and must never be committed.
+# .env.example (variable names only) IS committed.
+.env
+
+# Local Python virtual environment
+.venv/
+
+# Claude Code local folder (worktrees, local settings)
+.claude/
+
+# Data files are large and come from Kaggle: ignore the contents of
+# data/raw and data/processed, but keep the .gitkeep so the folders exist.
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Jupyter autosave folders
+.ipynb_checkpoints/
+
+# Office / Power BI lock and temp files (e.g. ~$report.docx)
+~$*
+
+# NOTE: .pbix files, outputs/ and reports/ are intentionally NOT ignored —
+# they are project deliverables and should be committed.

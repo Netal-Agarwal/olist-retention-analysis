@@ -1,0 +1,13 @@
+# Python 3.11 — install into .venv with:
+#   .venv\Scripts\python.exe -m pip install -r requirements.txt
+pandas>=2.1
+numpy>=1.26
+sqlalchemy>=2.0,<3.0
+psycopg2-binary>=2.9.9
+python-dotenv>=1.0
+scipy>=1.11
+statsmodels>=0.14
+matplotlib>=3.8
+seaborn>=0.13
+jupyter>=1.0
+ipykernel>=6.25
