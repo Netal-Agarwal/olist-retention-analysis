@@ -4,7 +4,8 @@ Source: Olist Brazilian E-Commerce public dataset (Kaggle), 9 CSVs in `data/raw/
 Row counts, types and issue counts come from `notebooks/01_data_profiling.ipynb` (pandas 3.1.1). Types are
 shown as pandas loads them there: `str` = text, `datetime` = timestamp, `int`/`float` = number.
 
-Profiling findings are summarised under "Known issues" for each table. Cleaning rules for them are decided in Phase 2 Step B.
+Profiling findings are summarised under "Known issues" for each raw table. The cleaned versions are described under
+[Processed tables](#processed-tables-dataprocessed) at the end. Cleaning rules are in `docs/decisions_log.md`, and metric definitions in `docs/metrics.md`.
 
 ---
 
@@ -161,3 +162,27 @@ File starts with a UTF-8 byte-order mark, so read it with `encoding="utf-8-sig"`
 |---|---|---|
 | `product_category_name` | str | Category in Portuguese (joins to `products`). |
 | `product_category_name_english` | str | English category name. |
+
+---
+
+## Processed tables (`data/processed/`)
+
+Produced by `notebooks/02_cleaning.ipynb` from `data/raw/` only. These files are gitignored; re-run the notebook to rebuild them.
+Every raw column is kept unless stated otherwise. All `is_` / `in_` / `flag_` columns are True/False. Their exact meaning is defined in the "Flag columns" table in `docs/metrics.md`.
+Only two tables change row count: `order_reviews` and `geolocation`.
+
+| File | Grain | Rows (raw → processed) | Key | Added / changed columns |
+|---|---|---|---|---|
+| `orders.csv` | one row per order | 99,441 → 99,441 | `order_id` | `is_delivered`, `in_analysis_window`, `flag_delivered_missing_customer_date`, `flag_carrier_before_approval`, `flag_carrier_before_purchase`, `flag_delivery_before_carrier`, `flag_cancelled_with_delivery_date`, `flag_no_items`, `flag_no_payment`, `flag_payment_mismatch` |
+| `customers.csv` | one row per `customer_id` (= per order) | 99,441 → 99,441 | `customer_id` | `flag_zip_not_in_geolocation` |
+| `order_items.csv` | one row per item in an order | 112,650 → 112,650 | `order_id + order_item_id` | `flag_price_above_p99`, `flag_freight_above_p99`, `flag_zero_freight` |
+| `order_payments.csv` | one row per payment method per order | 103,886 → 103,886 | `order_id + payment_sequential` | `flag_zero_value`, `flag_payment_type_not_defined` |
+| `order_reviews.csv` | **one row per reviewed order** | 99,224 → 98,673 | `order_id` (now unique; `review_id` is still not unique) | `n_raw_reviews` (raw review rows the order had), `flag_multiple_reviews` |
+| `products.csv` | one row per product | 32,951 → 32,951 | `product_id` | **`category_name_english`** replaces `product_category_name` (`'unknown'` when missing); `product_name_lenght` → `product_name_length`; `product_description_lenght` → `product_description_length`; `flag_missing_category`, `flag_zero_weight`, `flag_missing_dimensions` |
+| `sellers.csv` | one row per seller | 3,095 → 3,095 | `seller_id` | `flag_zip_not_in_geolocation` |
+| `geolocation.csv` | **one row per zip prefix** | 1,000,163 → 19,010 | `geolocation_zip_code_prefix` (unique) | `geolocation_lat` / `geolocation_lng` = median of the cleaned points; `geolocation_city` / `geolocation_state` = most common value; `n_points` = points used |
+
+Notes:
+- There is no separate translation file in `data/processed/`. English names live directly in `products.category_name_english`, including the two added translations (`pc_gamer`, `portable_kitchen_and_food_preparers`).
+- Timestamps are written as `YYYY-MM-DD HH:MM:SS`. Columns where every value is midnight (e.g. `order_estimated_delivery_date`) are written as `YYYY-MM-DD`. Empty dates are blank cells. Booleans are written as `True` / `False`. Zip prefixes are written as 5-character text, so read them back as text (`dtype=str`) to keep leading zeros.
+- Joins work as in the raw diagram above, except that `order_reviews` and `geolocation` can now be joined directly (one row per `order_id` / zip prefix). `order_items` and `order_payments` still need aggregating to order level first.

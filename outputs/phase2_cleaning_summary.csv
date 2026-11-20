@@ -1,0 +1,53 @@
+section,metric,value,note
+reconciliation,orders_raw_rows,99441,
+reconciliation,orders_processed_rows,99441,No rows removed; flag columns added only.
+reconciliation,customers_raw_rows,99441,
+reconciliation,customers_processed_rows,99441,No rows removed; flag columns added only.
+reconciliation,order_items_raw_rows,112650,
+reconciliation,order_items_processed_rows,112650,No rows removed; flag columns added only.
+reconciliation,order_payments_raw_rows,103886,
+reconciliation,order_payments_processed_rows,103886,No rows removed; flag columns added only.
+reconciliation,order_reviews_raw_rows,99224,
+reconciliation,order_reviews_processed_rows,98673,"Reduced to one review per order (latest review_answer_timestamp, ties -> review_creation_date -> review_id)."
+reconciliation,products_raw_rows,32951,
+reconciliation,products_processed_rows,32951,No rows removed; flag columns added only.
+reconciliation,sellers_raw_rows,3095,
+reconciliation,sellers_processed_rows,3095,No rows removed; flag columns added only.
+reconciliation,geolocation_raw_rows,1000163,
+reconciliation,geolocation_processed_rows,19010,"Exact duplicates dropped (261,831), points outside Brazil dropped (33), then one row per zip prefix (5 prefixes had no point left)."
+repeat_rule_A,lifetime_population,93094,
+repeat_rule_A,lifetime_repeaters_with_same_day,2788,
+repeat_rule_A,lifetime_repeat_rate_with_same_day_pct,2.99,
+repeat_rule_A,lifetime_repeaters_without_same_day,2004,
+repeat_rule_A,lifetime_repeat_rate_without_same_day_pct,2.15,
+repeat_rule_A,lifetime_same_day_only_repeaters,784,
+repeat_rule_A,within_180_days_population,56188,
+repeat_rule_A,within_180_days_repeaters_with_same_day,1756,
+repeat_rule_A,within_180_days_repeat_rate_with_same_day_pct,3.13,
+repeat_rule_A,within_180_days_repeaters_without_same_day,1112,
+repeat_rule_A,within_180_days_repeat_rate_without_same_day_pct,1.98,
+repeat_rule_A,within_180_days_same_day_only_repeaters,644,
+first_order_rule_B,customers_with_window_order_first_order_before_window,10,First delivered order taken from full history; these customers are not new in the window.
+first_order_rule_B,cohort_customers_in_window,93094,First delivered order in 2017-01-01..2018-08-31
+first_order_rule_B,eligible_180_day_customers,56188,Cohort customers with first order on or before 2018-03-04
+flags,orders.is_delivered,96478,rows where the column is True
+flags,orders.in_analysis_window,99092,rows where the column is True
+flags,orders.flag_delivered_missing_customer_date,8,rows where the column is True
+flags,orders.flag_carrier_before_approval,1359,rows where the column is True
+flags,orders.flag_carrier_before_purchase,166,rows where the column is True
+flags,orders.flag_delivery_before_carrier,23,rows where the column is True
+flags,orders.flag_cancelled_with_delivery_date,6,rows where the column is True
+flags,orders.flag_no_items,775,rows where the column is True
+flags,orders.flag_no_payment,1,rows where the column is True
+flags,orders.flag_payment_mismatch,303,rows where the column is True
+flags,customers.flag_zip_not_in_geolocation,279,rows where the column is True
+flags,order_items.flag_price_above_p99,1117,rows where the column is True
+flags,order_items.flag_freight_above_p99,1124,rows where the column is True
+flags,order_items.flag_zero_freight,383,rows where the column is True
+flags,order_payments.flag_zero_value,9,rows where the column is True
+flags,order_payments.flag_payment_type_not_defined,3,rows where the column is True
+flags,order_reviews.flag_multiple_reviews,547,rows where the column is True
+flags,products.flag_missing_category,610,rows where the column is True
+flags,products.flag_zero_weight,4,rows where the column is True
+flags,products.flag_missing_dimensions,2,rows where the column is True
+flags,sellers.flag_zip_not_in_geolocation,7,rows where the column is True

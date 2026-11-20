@@ -19,6 +19,7 @@ The owner is learning SQL, statistics and Power BI while building this and must 
 ## Conventions
 - **SQL:** PostgreSQL dialect, lowercase snake_case, CTEs preferred over nested subqueries. Files in `sql/` are numbered (`01_`, `02_`, ...). Each file starts with a header comment (purpose, business question answered, tables used), and each non-trivial step has a plain-English comment.
 - **Python:** notebooks in `notebooks/` (numbered), reusable code in `src/`. All DB access goes through `src/db.py`. Exported result tables go to `outputs/` as CSV. Use the `.venv` (Python 3.11, created with `py -3.11 -m venv .venv`).
+- Run notebooks with `.venv\Scripts\python -m nbconvert --to notebook --execute --inplace <path>` on the 'Python 3.11 (olist .venv)' kernel; never `python -m jupyter nbconvert`.
 - `docs/metrics.md` is the single source of truth for metric definitions. If a definition changes, update it and log the change in `docs/decisions_log.md`.
 
 ## Olist data traps (always respect)
