@@ -1,0 +1,65 @@
+metric,value
+total_orders,99441
+delivered_orders,96478
+delivered_orders_pct,97.02
+unique_customer_id,99441
+unique_customer_unique_id,96096
+customers_with_delivered_order,93358
+one_time_customers_delivered,90557
+one_time_customers_delivered_pct,97.0
+first_purchase_timestamp,2016-09-04 21:15:19
+last_purchase_timestamp,2018-10-17 17:30:18
+recommended_window_start,2017-01-01
+recommended_window_end,2018-08-31
+orders_in_recommended_window,99092
+customers_with_180d_followup_in_window,55973
+fully_duplicated_rows_geolocation,261831
+fully_duplicated_rows_other_tables,0
+reviews_rows_repeating_review_id,814
+reviews_rows_repeating_order_id,551
+orders_status_delivered,96478
+orders_status_shipped,1107
+orders_status_canceled,625
+orders_status_unavailable,609
+orders_status_invoiced,314
+orders_status_processing,301
+orders_status_created,5
+orders_status_approved,2
+date_issue: delivered: missing order_delivered_customer_date,8
+date_issue: delivered: missing order_approved_at,14
+date_issue: delivered: missing order_delivered_carrier_date,2
+date_issue: not delivered but has order_delivered_customer_date,6
+date_issue: customer delivery before purchase,0
+date_issue: carrier date before approval,1359
+date_issue: carrier date before purchase (extra),166
+date_issue: customer delivery before carrier date (extra),23
+date_issue: approval before purchase (extra),0
+review_id_values_repeated,789
+orders_with_more_than_one_review,547
+reviews_answer_before_creation,0
+orders_with_no_payment,1
+zero_value_payment_rows,9
+payment_type_not_defined_rows,3
+orders_payment_vs_items_mismatch_gt_0_01,303
+orders_payment_vs_items_mismatch_gt_1_00,249
+orders_with_no_items,775
+geolocation_distinct_zip_prefixes,19015
+geolocation_rows_outside_brazil_box,42
+customer_rows_zip_not_in_geolocation,278
+seller_rows_zip_not_in_geolocation,7
+products_missing_category,610
+categories_missing_translation,2
+items_with_product_missing_category,1603
+items_price_above_p99,1117
+items_freight_above_p99,1124
+items_zero_freight,383
+integrity: orders whose customer_id is not in customers,0
+integrity: items whose product_id is not in products,0
+integrity: items whose seller_id is not in sellers,0
+integrity: items whose order_id is not in orders,0
+integrity: payments whose order_id is not in orders,0
+integrity: reviews whose order_id is not in orders,0
+integrity: customers with no order (extra),0
+integrity: orders with no review (extra),768
+integrity: products never sold (extra),0
+integrity: sellers with no items (extra),0
