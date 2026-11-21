@@ -221,3 +221,66 @@ Notes:
 - There is **no foreign key** from `customers` or `sellers` to `geolocation`: 279 customers and 7 sellers have a zip prefix with no geolocation row. Join to geolocation with a `LEFT JOIN`.
 - The 7 product columns written as `N.0` in `products.csv` are loaded as integers (`225.0` → `225`). The loader stops if any value has a non-zero decimal part. See `docs/decisions_log.md`.
 - `order_estimated_delivery_date` is a date in the source and is stored as a `timestamp` at midnight. Compare it at date level (`::date`) as `docs/metrics.md` metric 7 requires.
+
+---
+
+## Analysis views (`analysis.*`)
+
+Built by `sql/04_base_views.sql` (Phase 4A), created by `src/create_views.py` and rebuilt by every `src/load_to_postgres.py` run. Views store no data; they are saved queries over `clean.*`. Metric rules are in `docs/metrics.md`. Row counts are checked in `sql/03_quality_checks.sql` section 7.
+
+### `analysis.v_orders`: one row per delivered order (96,478 rows; key `order_id`)
+
+| Column | Type | Meaning |
+|---|---|---|
+| `order_id`, `customer_id` | text | from `clean.orders` |
+| `customer_unique_id`, `customer_state`, `customer_city` | text | from `clean.customers` via `customer_id` |
+| `order_purchase_timestamp` | timestamp | purchase time |
+| `purchase_date` | date | calendar day of purchase |
+| `purchase_month` | date | first day of the purchase month |
+| `in_analysis_window` | boolean | purchase in 2017-01-01..2018-08-31 |
+| `order_approved_at`, `order_delivered_carrier_date`, `order_delivered_customer_date`, `order_estimated_delivery_date` | timestamp | as in `clean.orders` |
+| `delivery_days` | numeric | purchase → customer delivery in days, 2 decimals; NULL for the 8 orders with no delivery date |
+| `delay_days` | integer | delivery date − estimated date (negative = early); NULL if no delivery date |
+| `is_late` | boolean | delivery date > estimated date (dates, not timestamps); NULL for 8 orders; true for 6,534 |
+| `product_value`, `freight_value` | numeric | sum of item `price` / `freight_value` for the order |
+| `order_value` | numeric | product + freight |
+| `freight_share` | numeric | freight ÷ order_value, 4 decimals |
+| `n_items`, `n_sellers` | bigint | item lines; distinct sellers |
+| `main_category` | text | category of the highest-priced item (metrics.md 12) |
+| `max_installments` | integer | largest instalment count among the order's payments |
+| `main_payment_type` | text | type of the largest payment, `not_defined` ignored (metrics.md 13); NULL for 1 order |
+| `review_score` | integer | 1–5; NULL for 646 delivered orders with no review |
+| `flag_delivered_missing_customer_date`, `flag_carrier_before_approval`, `flag_carrier_before_purchase`, `flag_delivery_before_carrier`, `flag_payment_mismatch` | boolean | as in `clean.orders` |
+
+Every delivered order has at least one item (0 with NULL `product_value`).
+
+### `analysis.v_customers`: one row per `customer_unique_id` with a delivered order (93,358 rows)
+
+| Column | Type | Meaning |
+|---|---|---|
+| `customer_unique_id` | text | the customer (key) |
+| `first_order_id`, `first_purchase_date`, `cohort_month` | text / date / date | first delivered order over the full history (ties: timestamp, then order_id) |
+| `in_window_cohort` | boolean | first purchase date in 2017-01-01..2018-08-31 (93,094 true) |
+| `eligible_180d` | boolean | in window and first purchase date ≤ 2018-03-04 (56,188 true) |
+| `first_state`, `first_main_category`, `first_order_value`, `first_freight_share`, `first_is_late`, `first_delay_days`, `first_delivery_days`, `first_review_score` | various | the same columns of the first order in `v_orders` |
+| `n_delivered_orders` | integer | all delivered orders |
+| `n_distinct_purchase_dates` | integer | distinct calendar days with a delivered order |
+| `n_orders_on_first_date` | integer | delivered orders on the first purchase date (incl. the first) |
+| `second_purchase_date` | date | first later calendar date with a delivered order; NULL for one-timers |
+| `days_to_second` | integer | second − first purchase date |
+| `is_repeat_lifetime` | boolean | has a later-date delivered order |
+| `is_repeat_180d` | boolean | later-date order within 180 days; **NULL when not `eligible_180d`** |
+| `same_day_only_repeater` | boolean | ≥ 2 delivered orders, all on one day |
+| `total_product_value` | numeric | sum of product value over all delivered orders |
+| `last_purchase_date` | date | latest delivered purchase date |
+
+### `analysis.v_customer_rfm`: one row per in-window cohort customer (93,094 rows)
+
+| Column | Type | Meaning |
+|---|---|---|
+| `customer_unique_id`, `cohort_month`, `first_purchase_date`, `last_purchase_date`, `n_distinct_purchase_dates` | | from `v_customers` |
+| `recency_days` | integer | 2018-09-01 − last purchase date |
+| `monetary` | numeric | `total_product_value` |
+| `r_score`, `m_score` | integer | NTILE(5); 5 = most recent / highest spend |
+| `f_flag` | text | `repeat` (≥ 2 purchase dates) or `one-time` |
+| `segment` | text | one of 7 segments (metrics.md 16) |

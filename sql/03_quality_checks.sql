@@ -3,7 +3,8 @@
 -- Purpose : prove the load into the clean schema is complete and correct.
 -- Business question: "Can we trust the database copy of the data?" Every
 --           Phase 4+ number depends on the answer being yes.
--- Tables  : all 8 clean.* tables.
+-- Tables  : all 8 clean.* tables, and the analysis.* views (section 7).
+--           The views must exist first (src.create_views or src.load_to_postgres).
 --
 -- One query, runnable as-is in pgAdmin. Each row is one check:
 --   check_name | expected | actual | passed
@@ -198,6 +199,44 @@ with checks (check_name, expected, actual) as (
               from clean.orders
              where is_delivered
                and order_delivered_customer_date < order_purchase_timestamp)
+
+    -- -------------------------------------------------------------------------
+    -- 7. Views (analysis.*, built by sql/04_base_views.sql).
+    -- Prove the SQL views reproduce the Phase 2 Python numbers exactly.
+    -- -------------------------------------------------------------------------
+    union all
+    select 'views: v_orders rows = delivered orders', 96478,  -- [PS] delivered_orders
+           (select count(*) from analysis.v_orders)
+    union all
+    select 'views: v_customers rows = customers with a delivered order', 93358,  -- [PS] customers_with_delivered_order
+           (select count(*) from analysis.v_customers)
+    union all
+    select 'views: in-window cohort customers', 93094,  -- [CS] first_order_rule_B,cohort_customers_in_window
+           (select count(*) from analysis.v_customers where in_window_cohort)
+    union all
+    select 'views: lifetime repeaters (later date)', 2004,  -- [CS] repeat_rule_A,lifetime_repeaters_without_same_day
+           (select count(*) from analysis.v_customers where in_window_cohort and is_repeat_lifetime)
+    union all
+    select 'views: 180d eligible customers', 56188,  -- [CS] first_order_rule_B,eligible_180_day_customers
+           (select count(*) from analysis.v_customers where eligible_180d)
+    union all
+    select 'views: 180d repeaters (later date)', 1112,  -- [CS] repeat_rule_A,within_180_days_repeaters_without_same_day
+           (select count(*) from analysis.v_customers where is_repeat_180d)
+    union all
+    -- Expected 0: v_orders must have one row per order (items and payments
+    -- aggregated before joining). Rows minus distinct order_ids = duplicates.
+    select 'views: v_orders duplicate order_id rows', 0,
+           (select count(*) - count(distinct order_id) from analysis.v_orders)
+    union all
+    -- Money reconciliation, in cents (whole numbers fit the bigint columns).
+    -- Expected: recomputed independently from the clean tables (no Phase 2
+    -- figure exists for delivered orders only). Proves no double counting.
+    select 'views: v_orders product_value total = delivered sum(price) (cents)',
+           (select (sum(oi.price) * 100)::bigint
+              from clean.order_items oi
+              join clean.orders o on o.order_id = oi.order_id
+             where o.is_delivered),
+           (select (sum(product_value) * 100)::bigint from analysis.v_orders)
 )
 
 select check_name,

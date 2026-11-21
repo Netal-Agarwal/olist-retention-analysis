@@ -1,6 +1,6 @@
 # Metric definitions
 
-> Final as of Phase 2 (2026-11-20). Definitions are based on `notebooks/01_data_profiling.ipynb` and implemented in `notebooks/02_cleaning.ipynb`.
+> Final as of Phase 2 (2026-11-20); metrics 12–17 added in Phase 4A (2026-11-21), implemented in `sql/04_base_views.sql`, `sql/05_retention.sql`, `sql/06_rfm.sql`. Definitions are based on `notebooks/01_data_profiling.ipynb` and implemented in `notebooks/02_cleaning.ipynb`.
 > This file is the single source of truth for metric definitions. Any change must also be logged in `docs/decisions_log.md`.
 
 Table names follow the processed files in `data/processed/` (`orders`, `order_items`, `customers`, `order_reviews`, ...). See `docs/data_dictionary.md`.
@@ -61,6 +61,53 @@ Table names follow the processed files in `data/processed/` (`orders`, `order_it
 **Definition:** orders with `order_purchase_timestamp` from 2017-01-01 00:00:00 to 2018-08-31 23:59:59 inclusive (`orders.in_analysis_window = True`). Cohorts use the first delivered order date (metric 6).
 **In plain English:** the date range we trust. 2016 is sparse (2016-11 has no orders), and September–October 2018 hold only 20 orders, none of them delivered (the end of the data extract).
 **Columns used:** `orders.order_purchase_timestamp`
+
+## 12. Main category of an order
+**Definition:** the `category_name_english` of the order's highest-priced item; ties on price go to the lowest `order_item_id`. `'unknown'` when that product has no category.
+**In plain English:** an order can mix categories; we label it by what the customer spent most on.
+**Columns used:** `order_items.order_id`, `order_items.price`, `order_items.order_item_id`, `products.category_name_english`
+**Implemented in:** `analysis.v_orders.main_category` (`sql/04_base_views.sql`).
+
+## 13. Main payment type of an order
+**Definition:** the `payment_type` of the order's largest `payment_value`; ties go to the lowest `payment_sequential`. Rows with `payment_type = 'not_defined'` are ignored (NULL if nothing else is left).
+**In plain English:** how the customer mainly paid.
+**Columns used:** `order_payments.order_id`, `payment_type`, `payment_value`, `payment_sequential`
+
+## 14. Time to second purchase
+**Definition:** `second_purchase_date − first_purchase_date` in whole days, where the second purchase date is the first **later calendar date** with a delivered order (metric 4). Only defined for repeaters. Reported in buckets (≤30, 31–90, 91–180, 181–365, >365 days) with median and quartiles.
+**In plain English:** how long returning customers took to come back.
+**Caveat:** right-censored. Late cohorts can only show short gaps, so the distribution is biased towards short values.
+
+## 15. Monthly cohort retention
+**Definition:** for each cohort month (metric 6, in-window cohorts) and month number k = 0…12, `retention_pct` = distinct cohort customers with a delivered order on a later calendar date than their first, whose purchase falls in calendar month (cohort month + k), ÷ cohort size. k is a calendar-month offset, so k = 0 means "returned later in the same calendar month". A cell is NULL (not 0) when cohort month + k is after 2018-08 (the month is not fully observed).
+**In plain English:** of the people who first bought in a given month, what % came back in each following month — only shown where we can actually see that month.
+**Summaries:** pooled (sum returning ÷ sum cohort size) and median-of-cohorts over observed cells only (`q05_07_cohort_retention_summary`).
+
+## 16. RFM (recency, frequency, monetary)
+**Population:** in-window cohort customers (metric 6 and 11): 93,094.
+**Snapshot date:** 2018-09-01 (the day after the analysis window ends).
+- **Recency** `recency_days` = 2018-09-01 − last delivered purchase date (whole days).
+- **Monetary** `monetary` = the customer's total product revenue (sum of `price` over all delivered orders, metric 3; freight excluded).
+- **Frequency** `f_flag` = `'repeat'` if the customer has delivered orders on ≥ 2 distinct calendar dates, else `'one-time'`. A 1–5 frequency score is not used: 97.85% of the population has one purchase date (`q05_01_headline`), so quintiles of frequency would only split identical values by an arbitrary tie-break.
+- **Scores:** `r_score = NTILE(5)` ordered by recency_days descending (most recent = 5); `m_score = NTILE(5)` ordered by monetary ascending (highest = 5). Ties are ordered by `customer_unique_id` so scores are reproducible; customers with equal values can still fall either side of a quintile boundary.
+
+**Segment mapping** (first match wins):
+
+| Segment | Rule |
+|---|---|
+| Champions | repeat, r ≥ 4, m ≥ 4 |
+| Loyal repeaters | repeat, any other score |
+| Promising high-value one-timers | one-time, r ≥ 4, m ≥ 4 |
+| Recent low-value one-timers | one-time, r ≥ 4, m ≤ 3 |
+| Lapsed high-value one-timers | one-time, r ≤ 2, m ≥ 4 |
+| Lapsed low-value one-timers | one-time, r ≤ 2, m ≤ 3 |
+| Middle one-timers | one-time, r = 3 (everything else) |
+
+**In plain English:** sort customers by how recently they bought and how much they spent, split each into five equal groups, and label groups by what Olist would do with them (keep, win back, nurture).
+
+## 17. Minimum sample sizes for breakdowns
+**Definition:** 180-day repeat rates by first-order state are shown only for states with ≥ 500 eligible customers; by first-order main category only for categories with ≥ 300 eligible customers.
+**In plain English:** with a ~2% repeat rate, a group of 100 customers has only ~2 repeaters, so one person more or less swings the rate by a full percentage point. The thresholds keep each rate based on at least a few repeaters. They are rules of thumb, not a statistical test (tests follow in Phase 5).
 
 ---
 

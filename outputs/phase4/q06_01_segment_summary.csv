@@ -1,0 +1,8 @@
+segment,customers,pct_customers,product_revenue,pct_revenue,median_monetary,median_recency_days
+Lapsed high-value one-timers,14031,15.07,3886254.45,29.49,179.99,382
+Promising high-value one-timers,14533,15.61,3885522.64,29.48,177.67,96
+Middle one-timers,18245,19.6,2397093.35,18.19,87.0,221
+Lapsed low-value one-timers,22630,24.31,1263941.14,9.59,53.97,385
+Recent low-value one-timers,21651,23.26,1202542.86,9.12,52.0,93
+Champions,831,0.89,274571.18,2.08,240.0,89
+Loyal repeaters,1173,1.26,269643.15,2.05,158.89,268

@@ -1,0 +1,9 @@
+row_type,sort_order,label,customers,pct,days
+bucket,1,<=30 days,598,29.84,
+bucket,2,31-90 days,507,25.3,
+bucket,3,91-180 days,423,21.11,
+bucket,4,181-365 days,398,19.86,
+bucket,5,>365 days,78,3.89,
+stat,6,p25 (days),2004,,22.75
+stat,7,median (days),2004,,74.0
+stat,8,p75 (days),2004,,174.0
