@@ -1,0 +1,10 @@
+breakdown,first_order_group,eligible_customers,repeaters_180d,repeat_rate_180d_pct
+on time vs late,1 on time,52258,1050,2.01
+on time vs late,2 late,3928,62,1.58
+on time vs late,9 no delivery date,2,0,0.0
+delay bucket,1 early/on time,52258,1050,2.01
+delay bucket,2 1-3 days late,1039,19,1.83
+delay bucket,3 4-7 days late,1027,14,1.36
+delay bucket,4 8-14 days late,889,19,2.14
+delay bucket,5 15+ days late,973,10,1.03
+delay bucket,9 no delivery date,2,0,0.0

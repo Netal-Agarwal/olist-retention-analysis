@@ -251,8 +251,17 @@ Built by `sql/04_base_views.sql` (Phase 4A), created by `src/create_views.py` an
 | `main_payment_type` | text | type of the largest payment, `not_defined` ignored (metrics.md 13); NULL for 1 order |
 | `review_score` | integer | 1–5; NULL for 646 delivered orders with no review |
 | `flag_delivered_missing_customer_date`, `flag_carrier_before_approval`, `flag_carrier_before_purchase`, `flag_delivery_before_carrier`, `flag_payment_mismatch` | boolean | as in `clean.orders` |
+| *Added in Phase 4B (end of the view):* | | |
+| `main_seller_id` | text | seller of the highest-priced item (metrics.md 18) |
+| `seller_state` | text | state of the main seller |
+| `is_same_state` | boolean | seller_state = customer_state |
+| `delay_bucket` | text | `1 early/on time` … `5 15+ days late`; NULL for 8 orders (metrics.md 19) |
+| `delivery_speed_bucket` | text | `1 <=7 days` … `5 >30 days`; NULL for 8 orders |
+| `freight_share_band` | text | `1 <10%` … `5 >=40%` |
+| `installment_band` | text | `1 0-1` … `5 >10`; NULL for 1 order with no payment |
+| `order_value_band` | text | `1 <50` … `5 >=500` (R$, product + freight) |
 
-Every delivered order has at least one item (0 with NULL `product_value`).
+Every delivered order has at least one item (0 with NULL `product_value`), and so a main seller.
 
 ### `analysis.v_customers`: one row per `customer_unique_id` with a delivered order (93,358 rows)
 
@@ -273,6 +282,10 @@ Every delivered order has at least one item (0 with NULL `product_value`).
 | `same_day_only_repeater` | boolean | ≥ 2 delivered orders, all on one day |
 | `total_product_value` | numeric | sum of product value over all delivered orders |
 | `last_purchase_date` | date | latest delivered purchase date |
+| *Added in Phase 4B (end of the view), all OF THE FIRST ORDER:* | | |
+| `first_seller_state`, `first_is_same_state` | text / boolean | main seller's state; same state as the customer |
+| `first_max_installments` | integer | largest instalment count |
+| `first_delay_bucket`, `first_delivery_speed_bucket`, `first_freight_share_band`, `first_installment_band`, `first_order_value_band` | text | the `v_orders` buckets of the first order |
 
 ### `analysis.v_customer_rfm`: one row per in-window cohort customer (93,094 rows)
 

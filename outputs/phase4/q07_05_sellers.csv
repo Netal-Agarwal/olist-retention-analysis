@@ -1,0 +1,2 @@
+qualifying_sellers,qualifying_seller_orders,median_seller_late_pct,p90_seller_late_pct,worst_10pct_sellers,worst_10pct_late_orders,qualifying_seller_late_orders,all_in_window_late_orders,worst_10pct_share_of_qualifying_late_pct,worst_10pct_share_of_all_late_pct,worst_10pct_share_of_qualifying_orders_pct
+417,72483,5.83,12,42,746,4928,6531,15.14,11.42,6.73

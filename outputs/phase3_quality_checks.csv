@@ -51,3 +51,13 @@ views: 180d eligible customers,56188,56188,True
 views: 180d repeaters (later date),1112,1112,True
 views: v_orders duplicate order_id rows,0,0,True
 views: v_orders product_value total = delivered sum(price) (cents),1322149811,1322149811,True
+buckets: delay_bucket rows (orders with a delivery date),96470,96470,True
+buckets: delay_bucket NULL rows (no delivery date),8,8,True
+buckets: delay buckets 2-5 rows = is_late rows,0,0,True
+buckets: delivery_speed_bucket rows (orders with a delivery date),96470,96470,True
+buckets: same-state + cross-state orders = delivered orders,96478,96478,True
+buckets: freight_share_band rows = delivered orders,96478,96478,True
+buckets: installment_band NULL rows (no payment),1,1,True
+buckets: order_value_band rows = delivered orders,96478,96478,True
+buckets: eligible customers summed over first_delay_bucket,56188,56188,True
+buckets: 180d repeaters summed over first_delay_bucket,1112,1112,True

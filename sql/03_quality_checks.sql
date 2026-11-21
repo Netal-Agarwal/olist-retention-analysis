@@ -237,6 +237,55 @@ with checks (check_name, expected, actual) as (
               join clean.orders o on o.order_id = oi.order_id
              where o.is_delivered),
            (select (sum(product_value) * 100)::bigint from analysis.v_orders)
+
+    -- -------------------------------------------------------------------------
+    -- 8. Buckets, bands and seller columns (Phase 4B).
+    -- Reconciliation: every order / customer lands in exactly one bucket, so
+    -- the bucket counts add up to the known totals (no gaps, no overlaps).
+    -- -------------------------------------------------------------------------
+    union all
+    -- 96,478 delivered - 8 with no delivery date = 96,470.
+    -- [PS] delivered_orders - [CS] flags,orders.flag_delivered_missing_customer_date
+    select 'buckets: delay_bucket rows (orders with a delivery date)', 96478 - 8,
+           (select count(*) from analysis.v_orders where delay_bucket is not null)
+    union all
+    select 'buckets: delay_bucket NULL rows (no delivery date)', 8,  -- [CS] flags,orders.flag_delivered_missing_customer_date
+           (select count(*) from analysis.v_orders where delay_bucket is null)
+    union all
+    -- Bucket and flag agree: on-time bucket = not late; the 4 late buckets = late.
+    select 'buckets: delay buckets 2-5 rows = is_late rows', 0,
+           (select count(*) from analysis.v_orders
+             -- left(..., 1) = the bucket number; NULL bucket and NULL is_late match.
+             where (left(delay_bucket, 1) <> '1') is distinct from is_late)
+    union all
+    select 'buckets: delivery_speed_bucket rows (orders with a delivery date)', 96478 - 8,  -- same sources as above
+           (select count(*) from analysis.v_orders where delivery_speed_bucket is not null)
+    union all
+    -- Every delivered order has items (so a main seller): same + cross = all.
+    select 'buckets: same-state + cross-state orders = delivered orders', 96478,  -- [PS] delivered_orders
+           (select count(*) from analysis.v_orders where is_same_state is not null)
+    union all
+    select 'buckets: freight_share_band rows = delivered orders', 96478,  -- [PS] delivered_orders
+           (select count(*) from analysis.v_orders where freight_share_band is not null)
+    union all
+    -- The single order with no payment row is a delivered order (checked:
+    -- clean.orders where flag_no_payment has order_status = 'delivered').
+    select 'buckets: installment_band NULL rows (no payment)', 1,  -- [CS] flags,orders.flag_no_payment
+           (select count(*) from analysis.v_orders where installment_band is null)
+    union all
+    select 'buckets: order_value_band rows = delivered orders', 96478,  -- [PS] delivered_orders
+           (select count(*) from analysis.v_orders where order_value_band is not null)
+    union all
+    -- Customer level: the first-order delay buckets (incl. NULL) cover every
+    -- eligible customer, and their repeaters add up to the 180d total.
+    select 'buckets: eligible customers summed over first_delay_bucket', 56188,  -- [CS] first_order_rule_B,eligible_180_day_customers
+           (select sum(n)::bigint from (select count(*) as n from analysis.v_customers
+                                         where eligible_180d group by first_delay_bucket) g)
+    union all
+    select 'buckets: 180d repeaters summed over first_delay_bucket', 1112,  -- [CS] repeat_rule_A,within_180_days_repeaters_without_same_day
+           (select sum(n)::bigint from (select count(*) filter (where is_repeat_180d) as n
+                                          from analysis.v_customers
+                                         where eligible_180d group by first_delay_bucket) g)
 )
 
 select check_name,

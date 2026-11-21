@@ -48,9 +48,13 @@ with items as (
 main_item as (
     -- The most expensive item of each order; its category is the order's main
     -- category. Ties on price go to the lowest order_item_id (repeatable).
+    -- The same item also gives the order's main seller (Phase 4B): orders with
+    -- several sellers (1,275 delivered orders) are attributed to the seller of
+    -- the most expensive item.
     select distinct on (oi.order_id)
            oi.order_id,
-           p.category_name_english as main_category
+           p.category_name_english as main_category,
+           oi.seller_id            as main_seller_id
     from clean.order_items oi
     join clean.products p on p.product_id = oi.product_id
     order by oi.order_id, oi.price desc, oi.order_item_id
@@ -118,12 +122,67 @@ select
     o.flag_carrier_before_approval,
     o.flag_carrier_before_purchase,
     o.flag_delivery_before_carrier,
-    o.flag_payment_mismatch
+    o.flag_payment_mismatch,
+    -- ---- Added in Phase 4B (new columns go at the END so CREATE OR REPLACE works) ----
+    mi.main_seller_id,                                     -- seller of the highest-priced item
+    s.seller_state,                                        -- state of that seller
+    -- Seller and customer in the same state (a rough proxy for short distance).
+    s.seller_state = c.customer_state                      as is_same_state,
+    -- Buckets and bands are defined ONCE here so SQL queries, quality checks
+    -- and Power BI all use the same edges. The number prefix makes labels sort
+    -- in the right order. CASE stops at the first true line, so each line only
+    -- needs its upper edge. NULL inputs fall through to NULL (no ELSE).
+    case
+        when o.order_delivered_customer_date is null then null
+        when o.order_delivered_customer_date::date - o.order_estimated_delivery_date::date <= 0  then '1 early/on time'
+        when o.order_delivered_customer_date::date - o.order_estimated_delivery_date::date <= 3  then '2 1-3 days late'
+        when o.order_delivered_customer_date::date - o.order_estimated_delivery_date::date <= 7  then '3 4-7 days late'
+        when o.order_delivered_customer_date::date - o.order_estimated_delivery_date::date <= 14 then '4 8-14 days late'
+        else '5 15+ days late'
+    end                                                    as delay_bucket,
+    -- Delivery speed on the decimal delivery time (purchase -> customer), in days.
+    case
+        when o.order_delivered_customer_date is null then null
+        when o.order_delivered_customer_date - o.order_purchase_timestamp <= interval '7 days'  then '1 <=7 days'
+        when o.order_delivered_customer_date - o.order_purchase_timestamp <= interval '14 days' then '2 8-14 days'
+        when o.order_delivered_customer_date - o.order_purchase_timestamp <= interval '21 days' then '3 15-21 days'
+        when o.order_delivered_customer_date - o.order_purchase_timestamp <= interval '30 days' then '4 22-30 days'
+        else '5 >30 days'
+    end                                                    as delivery_speed_bucket,
+    -- Freight as a share of the order total (metrics.md metric 9).
+    case
+        when i.product_value + i.freight_value is null or i.product_value + i.freight_value = 0 then null
+        when i.freight_value / (i.product_value + i.freight_value) < 0.10 then '1 <10%'
+        when i.freight_value / (i.product_value + i.freight_value) < 0.20 then '2 10-20%'
+        when i.freight_value / (i.product_value + i.freight_value) < 0.30 then '3 20-30%'
+        when i.freight_value / (i.product_value + i.freight_value) < 0.40 then '4 30-40%'
+        else '5 >=40%'
+    end                                                    as freight_share_band,
+    -- Largest instalment count of the order. 0 (2 payment rows in the data)
+    -- is treated as a single payment. NULL when the order has no payment row.
+    case
+        when pt.max_installments is null then null
+        when pt.max_installments <= 1  then '1 0-1'
+        when pt.max_installments <= 3  then '2 2-3'
+        when pt.max_installments <= 6  then '3 4-6'
+        when pt.max_installments <= 10 then '4 7-10'
+        else '5 >10'
+    end                                                    as installment_band,
+    -- Order value (product + freight, R$) in round-number bands.
+    case
+        when i.product_value + i.freight_value is null then null
+        when i.product_value + i.freight_value < 50  then '1 <50'
+        when i.product_value + i.freight_value < 100 then '2 50-100'
+        when i.product_value + i.freight_value < 200 then '3 100-200'
+        when i.product_value + i.freight_value < 500 then '4 200-500'
+        else '5 >=500'
+    end                                                    as order_value_band
 from clean.orders o
 join clean.customers c       on c.customer_id = o.customer_id   -- every order has a customer (FK)
 -- LEFT JOINs: an order with no items, payment or review is still kept.
 left join items i            on i.order_id  = o.order_id
 left join main_item mi       on mi.order_id = o.order_id
+left join clean.sellers s    on s.seller_id = mi.main_seller_id
 left join payment_totals pt  on pt.order_id = o.order_id
 left join main_payment mp    on mp.order_id = o.order_id
 left join clean.order_reviews r on r.order_id = o.order_id
@@ -212,7 +271,16 @@ select
     -- only because of a split basket.
     (f.n_delivered_orders >= 2 and f.n_distinct_purchase_dates = 1) as same_day_only_repeater,
     f.total_product_value,
-    f.last_purchase_date
+    f.last_purchase_date,
+    -- ---- Added in Phase 4B (at the END): more attributes OF THE FIRST ORDER ----
+    f.seller_state                                     as first_seller_state,
+    f.is_same_state                                    as first_is_same_state,
+    f.max_installments                                 as first_max_installments,
+    f.delay_bucket                                     as first_delay_bucket,
+    f.delivery_speed_bucket                            as first_delivery_speed_bucket,
+    f.freight_share_band                               as first_freight_share_band,
+    f.installment_band                                 as first_installment_band,
+    f.order_value_band                                 as first_order_value_band
 from first_order f;
 
 

@@ -1,0 +1,3 @@
+seller_vs_customer,orders,orders_with_delivery_date,late_pct,median_delivery_days,eligible_customers,repeaters_180d,repeat_rate_180d_pct
+same state,34609,34604,4.51,6.52,18776,409,2.18
+cross state,61602,61599,8.07,12.78,37412,703,1.88

@@ -1,0 +1,7 @@
+first_delivery_speed,eligible_customers,repeaters_180d,repeat_rate_180d_pct
+1 <=7 days,11716,258,2.2
+2 8-14 days,23991,492,2.05
+3 15-21 days,11985,235,1.96
+4 22-30 days,5339,85,1.59
+5 >30 days,3155,42,1.33
+9 no delivery date,2,0,0.0

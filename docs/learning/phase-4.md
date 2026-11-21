@@ -182,3 +182,131 @@ Quickly, if at all. Of 2,004 lifetime repeaters, 29.84% return within 30 days an
 
 **8. Some states and categories repeat more. Can you say SP customers are more loyal than CE customers?**
 Not yet. 2.23% (SP, 22,307 eligible) vs 1.13% (CE, 798 eligible) is a difference in the sample. With rates this low, small groups are noisy, which is why I set minimum group sizes (≥ 500 for states, ≥ 300 for categories). Whether the difference is statistically significant, and whether it's driven by something else such as delivery time, is tested in Phase 5.
+
+---
+---
+
+## Part B: delivery, reviews, pricing/freight and prioritisation
+
+Files:
+- `sql/04_base_views.sql`: new columns at the **end** of `v_orders` (main seller, seller state, same-state flag, five buckets/bands) and matching `first_*` columns at the end of `v_customers`.
+- `sql/07_delivery_reviews.sql` (11 queries), `sql/08_pricing_freight.sql` (7) and `sql/09_prioritisation.sql` (5), run with `src.run_analysis` into `outputs/phase4/`.
+- `sql/03_quality_checks.sql` section 8: 10 reconciliation checks. 62 of 62 pass, also after a loader re-run, and all nine 4A CSVs are byte-identical afterwards.
+
+---
+
+## 1. CASE bucketing, defined once in the view
+```sql
+case
+    when o.order_delivered_customer_date is null then null
+    when <delay> <= 0  then '1 early/on time'
+    when <delay> <= 3  then '2 1-3 days late'
+    when <delay> <= 7  then '3 4-7 days late'
+    when <delay> <= 14 then '4 8-14 days late'
+    else '5 15+ days late'
+end as delay_bucket
+```
+- CASE checks lines top to bottom and stops at the first true one, so each line needs only its upper edge, and an order can never fall into two buckets.
+- The number prefix ("1 ", "2 ", …) makes the labels sort in the right order as text, in a CSV or in Power BI.
+- Putting the bucket in the **view** means every query, the quality checks and later Power BI use the same edges. The checks prove the buckets cover everything: 96,470 orders have a delay bucket, which is 96,478 delivered orders minus the 8 with no delivery date.
+- A trap we hit: comparing text labels with `>` compares characters. `'1 early/on time' > '1'` is **true**, because the longer string sorts after its prefix. The check uses `left(delay_bucket, 1) <> '1'` instead.
+
+## 2. Safe division with NULLIF, and the integer-division trap
+- `x / nullif(y, 0)`: if `y` is 0, NULLIF turns it into NULL, and `x / NULL` is NULL instead of a "division by zero" error. For example, a seller whose orders all lack a delivery date gets a NULL late %, not a crash.
+- **Integer division** truncates. In PostgreSQL, `62 / 3928` = **0** and `100 * 62 / 3928` = **1**, while `100.0 * 62 / 3928` = 1.58. (We ran these three in the database; the numbers are late-first repeaters and late-first customers from `q07_07`.) That is why every rate in these files starts with `100.0 *`: one decimal value makes the whole calculation decimal.
+
+## 3. ROW_NUMBER vs RANK vs DENSE_RANK
+For tied values, the three functions number rows differently:
+
+| Function | Ties | Gap after a tie | Used for |
+|---|---|---|---|
+| `row_number()` | different numbers (tie-break decides) | n/a | "exactly 20 rows": `q09_02` top 20 sellers, tie-break orders then seller_id |
+| `rank()` | same number | yes (1, 2, 2, 4) | `q09_01` state priority |
+| `dense_rank()` | same number | no (1, 2, 2, 3) | when you want "the 3rd distinct value" |
+
+Real example from `q09_01`: BA and RS both have an opportunity of 0.9 extra repeaters, so both get rank **5**, and PR comes next with rank **7**. With `dense_rank()` PR would be 6. With `row_number()` one of BA/RS would arbitrarily become 6.
+
+## 4. HAVING thresholds: why small samples mislead
+`having count(*) >= 300` keeps only groups big enough to read. Even then, the **late** cells inside categories are small. In `q07_09`, pet_shop has 46 late-first customers with 3 repeaters, a 6.52% rate that looks *better* than its on-time 2.79%. One repeater fewer would make it 4.35%, and two fewer 2.17%. With rates near 2%, a few people swing everything, so we always show n next to each rate, and Phase 5 adds confidence intervals.
+
+## 5. Confounding and stratified comparison
+A **confounder** is a third factor linked to both things you are comparing. Product category could be one: some categories are rebought often (pet food) and might also arrive late more or less often. A raw late-vs-on-time comparison would then partly measure category mix.
+
+A **stratified** comparison compares like with like, here late vs on-time *within each category*, and then averages the gaps. `q07_11` weights each category's gap by its number of late customers:
+
+| | Gap, on time − late (percentage points) |
+|---|---|
+| Crude, all eligible customers | 0.43 |
+| Crude, the 24 covered categories | 0.37 |
+| Within-category (weighted) | 0.38 |
+
+Within categories the gap barely moves (0.37 → 0.38), so category mix does **not** explain it. Late is worse in 16 of the 24 categories, but every late cell has only 0–10 repeaters.
+
+## 6. Correlation is not causation
+Everything in Part B is an **association**. Customers whose first order arrived late repeat less (1.58% vs 2.01%), but that doesn't prove lateness causes it. Late orders may differ in other ways, for example remote states, bulky products or peak season (late % was 18.96% for March 2018 purchases vs 1.16% for June 2018). Part B can't rule those out. Phase 5 tests whether the gaps are larger than chance and controls for some of these factors. That is why the estimates in `q09` are labelled **ESTIMATE** and state "assumes lateness causes the gap".
+
+---
+
+## Results (Part B)
+
+**Delivery overview** (`q07_01`, 96,211 in-window delivered orders, 96,203 with a delivery date): 93.21% on time, 6.79% late (6,531). Median delivery 10.21 days, P90 23.06 days. Late orders are a median 7 days late.
+
+**Same vs cross state** (`q07_03`):
+
+| | Orders | Late % | Median delivery days | Eligible customers | 180d repeat |
+|---|---|---|---|---|---|
+| Same state | 34,609 | 4.51 | 6.52 | 18,776 | 2.18% (409) |
+| Cross state | 61,602 | 8.07 | 12.78 | 37,412 | 1.88% (703) |
+
+**Reviews by delay** (`q07_06`, reviewed orders):
+
+| Delay bucket | Reviewed orders | Mean score | Median | % 1–2 stars |
+|---|---|---|---|---|
+| Early / on time | 89,182 | 4.29 | 5 | 9.25 |
+| 1–3 days late | 1,851 | 3.29 | 4 | 32.14 |
+| 4–7 days late | 1,748 | 2.10 | 1 | 67.68 |
+| 8–14 days late | 1,446 | 1.67 | 1 | 80.15 |
+| 15+ days late | 1,333 | 1.72 | 1 | 78.32 |
+
+**Repeat by first order** (eligible customers, 180-day rate):
+- On time 2.01% (1,050 of 52,258) vs late 1.58% (62 of 3,928) (`q07_07`). By delay bucket: 1.83% (1–3 days), 1.36% (4–7), 2.14% (8–14), 1.03% (15+). The buckets have only 889–1,039 customers each, so the pattern isn't smooth.
+- By first review (`q07_08`): 5 stars 2.12% (32,248), 4 stars 1.83%, 3 stars 1.94%, 2 stars 1.51% (1,788), 1 star 1.71% (5,658), no review 1.20% (417).
+- By delivery speed (`q07_10`): ≤7 days 2.20% (11,716) falling steadily to 1.33% for >30 days (3,155).
+
+**Sellers** (`q07_05`): 417 sellers have ≥ 50 in-window orders. The worst 10% by late % (42 sellers) have 6.73% of those sellers' orders but 15.14% of their late orders (11.42% of all in-window late orders). The top 20 sellers by late orders account for 24.58% of all late orders (`q09_02`).
+
+**Freight** (`q08_01`): median freight share 18.33% (p25 11.66%, p75 27.57%); median freight R$17.17. By freight-share band, 1–2 star reviews only rise from 12.32% (<10%) to 13.95% (≥40%) (`q08_04`). 180d repeat is flat, 1.82–2.19% with no trend (`q08_05`).
+
+**Estimates** (labelled ESTIMATE, assumptions in the CSVs):
+- Late delivery (`q09_04`): 3,928 late-first customers × 0.43 pp = **16.9 extra repeaters**, × median second-visit value R$89.90 = **R$1,521.45** of product revenue over the 180-day horizon of the eligible cohort.
+- Second-purchase campaign (`q09_05`), 14,533 Promising high-value one-timers: 1% → 145.3 repeaters / R$13,065.17; 2% → 290.7 / R$26,130.33; 5% → 726.7 / R$65,325.84 (assumed conversion rates, before campaign cost).
+
+What it means: late delivery is strongly linked to **reviews** (1–2 stars go from 9.25% to about 80%), but only weakly to **repeat buying** (2.01% vs 1.58%). Even customers who gave 5 stars and got their parcel on time repeat at only about 2%. So fixing lateness alone is unlikely to fix retention. Its measured link is small and only affects the ~7% of first orders that arrive late. The bigger lever looks like actively driving a second purchase. All of this is to be tested in Phase 5.
+
+---
+
+## Interview questions, Part B (with model answers)
+
+**1. Does late delivery hurt Olist?**
+It clearly hurts satisfaction: the share of 1–2 star reviews goes from 9.25% for on-time orders to 67.68% at 4–7 days late and 80.15% at 8–14 days. The link to repeat buying is much smaller. Customers whose first order was late repeat at 1.58% within 180 days, against 2.01% for on time, a 0.43-point gap. That's an association; Phase 5 tests whether it's more than chance.
+
+**2. How did you make sure product category wasn't driving the late-vs-on-time difference?**
+I stratified: I compared late vs on time within each of the 24 categories with ≥ 300 eligible customers, then took a weighted average of the gaps (weights = late customers). The within-category gap is 0.38 points, against a crude 0.37 on the same customers, so category mix doesn't explain it. The per-category late cells are small, so I show n everywhere.
+
+**3. Is distance the problem?**
+Partly for delivery. Orders shipped within the customer's state arrive in a median 6.52 days with 4.51% late, against 12.78 days and 8.07% late across states. Same-state first-order customers repeat at 2.18% vs 1.88%. The states with the most late deliveries (MA 17.53%, CE 13.83%, BA 12.17%) are mostly in the north-east, far from where nearly all of the top-20 late sellers are based (SP). But that's still correlation; same-state orders also differ in other ways.
+
+**4. Where should Olist fix delivery first?**
+By late orders, sellers are concentrated. The 42 worst sellers (10% of those with ≥ 50 orders) handle 6.73% of those sellers' orders but cause 15.14% of their late orders, and the top 20 sellers by late orders cause 24.58% of all late orders. By state, the opportunity measure ranks RJ first (1,057 late-first customers, 12.14% late), then SP, MG, SC and BA. RJ ranks high because it combines volume with a high late rate.
+
+**5. What would fixing late delivery be worth?**
+As an ESTIMATE: 3,928 late-first customers × the 0.43-point gap ≈ 16.9 extra repeat customers. At the median second-visit value of R$89.90, that's about R$1,521 of product revenue for the eligible cohort. It assumes lateness causes the gap. It's small, which is itself a finding: the business case for delivery is satisfaction and reputation, not mainly retention.
+
+**6. Why RANK in one query and ROW_NUMBER in another?**
+For the state ranking, ties should share a place: BA and RS both have 0.9 and both rank 5, so the next state is 7. For "top 20 sellers" I need exactly 20 rows, so ROW_NUMBER with an explicit tie-break (orders, then seller_id) makes the cut deterministic. DENSE_RANK would number without gaps (5, 5, 6).
+
+**7. Why do you write `100.0 *` and `NULLIF`?**
+Integer division truncates. In this database `100 * 62 / 3928` returns 1, but `100.0 * 62 / 3928` returns 1.58. NULLIF(denominator, 0) turns a zero denominator into NULL, so a group with no qualifying rows gives an empty rate instead of crashing the query.
+
+**8. Does freight cost matter?**
+Less than expected. The median order spends 18.33% of the bill on freight, and up to 27.69% in MA. But 1–2 star reviews only rise from 12.32% to 13.95% across freight-share bands, and the 180-day repeat rate is flat (1.82–2.19%) with no clear direction. On this data, freight share doesn't look like a main reason for low repeat buying.

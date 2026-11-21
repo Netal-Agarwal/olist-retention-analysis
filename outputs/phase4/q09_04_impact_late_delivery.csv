@@ -1,0 +1,2 @@
+label,late_first_customers,on_time_rate_pct,late_rate_pct,gap_pp,extra_repeaters_estimate,n_second_visits,median_second_visit_value,extra_product_revenue_estimate,assumptions
+ESTIMATE,3928,2.01,1.58,0.43,16.9,1112,89.9,1521.45,"assumes the late-vs-on-time gap is caused by lateness (untested; Phase 5); 180-day horizon, 180d-eligible customers only (2017-01-01..2018-03-04 first orders); one second visit per extra repeater at the median second-visit product value; product revenue only (no freight, no margin)"

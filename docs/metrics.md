@@ -1,6 +1,6 @@
 # Metric definitions
 
-> Final as of Phase 2 (2026-11-20); metrics 12–17 added in Phase 4A (2026-11-21), implemented in `sql/04_base_views.sql`, `sql/05_retention.sql`, `sql/06_rfm.sql`. Definitions are based on `notebooks/01_data_profiling.ipynb` and implemented in `notebooks/02_cleaning.ipynb`.
+> Final as of Phase 2 (2026-11-20); metrics 12–17 added in Phase 4A and 18–24 in Phase 4B (2026-11-21), implemented in `sql/04_base_views.sql` and `sql/05_` … `sql/09_*.sql`. Definitions are based on `notebooks/01_data_profiling.ipynb` and implemented in `notebooks/02_cleaning.ipynb`.
 > This file is the single source of truth for metric definitions. Any change must also be logged in `docs/decisions_log.md`.
 
 Table names follow the processed files in `data/processed/` (`orders`, `order_items`, `customers`, `order_reviews`, ...). See `docs/data_dictionary.md`.
@@ -108,6 +108,43 @@ Table names follow the processed files in `data/processed/` (`orders`, `order_it
 ## 17. Minimum sample sizes for breakdowns
 **Definition:** 180-day repeat rates by first-order state are shown only for states with ≥ 500 eligible customers; by first-order main category only for categories with ≥ 300 eligible customers.
 **In plain English:** with a ~2% repeat rate, a group of 100 customers has only ~2 repeaters, so one person more or less swings the rate by a full percentage point. The thresholds keep each rate based on at least a few repeaters. They are rules of thumb, not a statistical test (tests follow in Phase 5).
+**Added in Phase 4B:** sellers need ≥ 50 in-window delivered orders (main-seller attribution, metric 18) before their late % is shown or ranked.
+
+## 18. Main seller, seller state and same-state orders
+**Definition:** `main_seller_id` = the seller of the order's highest-priced item (same tie rule as metric 12); `seller_state` = that seller's state; `is_same_state` = `seller_state = customer_state`. Orders with several sellers (1,275 delivered orders) are attributed to the main seller only.
+**In plain English:** who mainly shipped the order and whether it stayed within the customer's state, a rough proxy for short distance.
+
+## 19. Buckets and bands
+All defined once as columns of `analysis.v_orders` (and copied as `first_*` columns for the first order in `analysis.v_customers`). Labels start with a number so they sort correctly. CASE takes the first matching line, so ranges never overlap.
+
+| Column | Based on | Bands |
+|---|---|---|
+| `delay_bucket` | `delay_days` (date level, metric 7) | `1 early/on time` (≤ 0), `2 1-3 days late`, `3 4-7`, `4 8-14`, `5 15+`; NULL with no delivery date |
+| `delivery_speed_bucket` | purchase → delivery time (decimal days) | `1 <=7 days`, `2 8-14` (> 7 to 14), `3 15-21` (> 14 to 21), `4 22-30` (> 21 to 30), `5 >30`; NULL with no delivery date |
+| `freight_share_band` | freight ÷ (product + freight), unrounded (metric 9) | `1 <10%`, `2 10-20%`, `3 20-30%`, `4 30-40%`, `5 >=40%` (lower edge included) |
+| `installment_band` | `max_installments` | `1 0-1` (0 instalments = single payment), `2 2-3`, `3 4-6`, `4 7-10`, `5 >10`; NULL with no payment row (1 order) |
+| `order_value_band` | `order_value` (product + freight, R$) | `1 <50`, `2 50-100`, `3 100-200`, `4 200-500`, `5 >=500` |
+
+Order-value bands are round numbers around the eligible first-order quartiles (p25 R$61.58, median R$103.73, p75 R$174.42), with a top band for large baskets. Eligible first orders per band: 9,714 / 17,301 / 17,958 / 8,926 / 2,289 (`q08_07`).
+
+## 20. Late % and on-time %
+**Definition:** late % = late orders ÷ orders with a customer delivery date (`count(is_late)`), × 100. On-time % = 100 − late %. Orders with no delivery date are excluded from both the numerator and the denominator.
+
+## 21. Seller late concentration
+**Definition:** among sellers with ≥ 50 in-window orders, rank by late % (ties: more late orders first, then `seller_id`). The worst 10% = the top ceil(10% × number of sellers). Their late orders are reported as a share of all late orders from qualifying sellers, and as a share of all in-window late orders.
+
+## 22. Second-visit product value
+**Definition:** for an eligible customer who repeated within 180 days (metric 5), the sum of `product_value` over all their delivered orders on `second_purchase_date`. The median over all 1,112 such customers is R$89.90 (`q09_04`).
+**In plain English:** what a customer typically spends when they come back the first time. Used as the revenue per extra repeat customer in estimates.
+
+## 23. State opportunity measure (ESTIMATE)
+**Definition:** per state (≥ 500 eligible customers): eligible customers whose first order was late × (national 180-day repeat rate of on-time first orders − national rate of late first orders). States are ranked by it with `RANK()`.
+**In plain English:** how many extra repeat customers the state would have if its late first orders had repeated like on-time ones.
+**Assumptions:** the gap is caused by lateness (untested; Phase 5); the national gap applies in every state (state-level late cells are too small for their own gap).
+
+## 24. Impact estimates (ESTIMATE)
+- **Late delivery (`q09_04`):** extra repeaters = late-first eligible customers × (on-time rate − late rate); extra product revenue = extra repeaters × median second-visit product value (metric 22). Assumes the gap is caused by lateness; 180-day horizon; eligible customers only; one second visit per extra repeater; product revenue, not margin.
+- **Second-purchase campaign (`q09_05`):** extra repeaters = customers in "Promising high-value one-timers" × assumed conversion rate (1%, 2%, 5%); extra product revenue = × median second-visit product value. The conversion rates are assumptions, not measured. The median value is from all repeaters, not only high-value ones. Campaign cost is not included.
 
 ---
 
