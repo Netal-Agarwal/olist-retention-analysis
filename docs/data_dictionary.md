@@ -186,3 +186,38 @@ Notes:
 - There is no separate translation file in `data/processed/`. English names live directly in `products.category_name_english`, including the two added translations (`pc_gamer`, `portable_kitchen_and_food_preparers`).
 - Timestamps are written as `YYYY-MM-DD HH:MM:SS`. Columns where every value is midnight (e.g. `order_estimated_delivery_date`) are written as `YYYY-MM-DD`. Empty dates are blank cells. Booleans are written as `True` / `False`. Zip prefixes are written as 5-character text, so read them back as text (`dtype=str`) to keep leading zeros.
 - Joins work as in the raw diagram above, except that `order_reviews` and `geolocation` can now be joined directly (one row per `order_id` / zip prefix). `order_items` and `order_payments` still need aggregating to order level first.
+
+---
+
+## PostgreSQL tables (`clean.*`)
+
+Built by `sql/01_schema.sql` + `sql/02_indexes.sql` and loaded from `data/processed/` by `src/load_to_postgres.py` (Phase 3) into the `olist` database, schema `clean`. Column names and order are identical to the processed CSVs. The load is checked by `sql/03_quality_checks.sql` (results in `outputs/phase3_quality_checks.csv`).
+
+**Type rules used for every table**
+
+| Kind of column | PostgreSQL type |
+|---|---|
+| IDs, zip prefixes, city, state, status, payment type, category, review text | `text` |
+| All dates and times (date-only values stored as midnight) | `timestamp` |
+| `price`, `freight_value`, `payment_value` | `numeric(10,2)` |
+| `order_item_id`, `payment_sequential`, `payment_installments`, `review_score`, `n_raw_reviews`, `n_points`, the 7 product size/text columns | `integer` |
+| `geolocation_lat`, `geolocation_lng` | `double precision` |
+| All `is_` / `in_` / `flag_` columns | `boolean` |
+
+**Tables, keys and constraints** (rows = rows loaded)
+
+| Table | Rows | Primary key | Foreign keys | Nullable columns | CHECK constraints | Extra indexes |
+|---|---|---|---|---|---|---|
+| `clean.customers` | 99,441 | `customer_id` | none | none | zip prefix is 5 digits | `customer_unique_id`, `customer_zip_code_prefix` |
+| `clean.sellers` | 3,095 | `seller_id` | none | none | zip prefix is 5 digits | `seller_zip_code_prefix` |
+| `clean.products` | 32,951 | `product_id` | none | the 7 size/text attributes | none | none |
+| `clean.geolocation` | 19,010 | `geolocation_zip_code_prefix` | none | none | zip prefix is 5 digits | none |
+| `clean.orders` | 99,441 | `order_id` | `customer_id → clean.customers` | `order_approved_at`, `order_delivered_carrier_date`, `order_delivered_customer_date` | none | `customer_id`, `order_purchase_timestamp` |
+| `clean.order_items` | 112,650 | `order_id, order_item_id` | `order_id → clean.orders`, `product_id → clean.products`, `seller_id → clean.sellers` | none | `price >= 0`, `freight_value >= 0` | `product_id`, `seller_id` |
+| `clean.order_payments` | 103,886 | `order_id, payment_sequential` | `order_id → clean.orders` | none | `payment_value >= 0`, `payment_installments >= 0` | none |
+| `clean.order_reviews` | 98,673 | `order_id` (`review_id` is not unique) | `order_id → clean.orders` | `review_comment_title`, `review_comment_message` | `review_score` between 1 and 5 | none |
+
+Notes:
+- There is **no foreign key** from `customers` or `sellers` to `geolocation`: 279 customers and 7 sellers have a zip prefix with no geolocation row. Join to geolocation with a `LEFT JOIN`.
+- The 7 product columns written as `N.0` in `products.csv` are loaded as integers (`225.0` → `225`). The loader stops if any value has a non-zero decimal part. See `docs/decisions_log.md`.
+- `order_estimated_delivery_date` is a date in the source and is stored as a `timestamp` at midnight. Compare it at date level (`::date`) as `docs/metrics.md` metric 7 requires.

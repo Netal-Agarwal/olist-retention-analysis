@@ -1,0 +1,45 @@
+check_name,expected,actual,passed
+rows: customers,99441,99441,True
+rows: sellers,3095,3095,True
+rows: products,32951,32951,True
+rows: geolocation,19010,19010,True
+rows: orders,99441,99441,True
+rows: order_items,112650,112650,True
+rows: order_payments,103886,103886,True
+rows: order_reviews,98673,98673,True
+business: delivered orders (status = delivered),96478,96478,True
+business: distinct customer_unique_id,96096,96096,True
+business: orders with more than one review,0,0,True
+orphans: orders without customer,0,0,True
+orphans: order_items without order,0,0,True
+orphans: order_items without product,0,0,True
+orphans: order_items without seller,0,0,True
+orphans: order_payments without order,0,0,True
+orphans: order_reviews without order,0,0,True
+geo: customers with no geolocation match,279,279,True
+geo: sellers with no geolocation match,7,7,True
+flag: orders.is_delivered,96478,96478,True
+flag: orders.in_analysis_window,99092,99092,True
+flag: orders.flag_delivered_missing_customer_date,8,8,True
+flag: orders.flag_carrier_before_approval,1359,1359,True
+flag: orders.flag_carrier_before_purchase,166,166,True
+flag: orders.flag_delivery_before_carrier,23,23,True
+flag: orders.flag_cancelled_with_delivery_date,6,6,True
+flag: orders.flag_no_items,775,775,True
+flag: orders.flag_no_payment,1,1,True
+flag: orders.flag_payment_mismatch,303,303,True
+flag: customers.flag_zip_not_in_geolocation,279,279,True
+flag: order_items.flag_price_above_p99,1117,1117,True
+flag: order_items.flag_freight_above_p99,1124,1124,True
+flag: order_items.flag_zero_freight,383,383,True
+flag: order_payments.flag_zero_value,9,9,True
+flag: order_payments.flag_payment_type_not_defined,3,3,True
+flag: order_reviews.flag_multiple_reviews,547,547,True
+flag: products.flag_missing_category,610,610,True
+flag: products.flag_zero_weight,4,4,True
+flag: products.flag_missing_dimensions,2,2,True
+flag: sellers.flag_zip_not_in_geolocation,7,7,True
+value: negative price,0,0,True
+value: negative freight_value,0,0,True
+value: negative payment_value,0,0,True
+value: delivered orders delivered before purchase,0,0,True
