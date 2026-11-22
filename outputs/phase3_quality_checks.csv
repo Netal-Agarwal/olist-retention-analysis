@@ -61,3 +61,5 @@ buckets: installment_band NULL rows (no payment),1,1,True
 buckets: order_value_band rows = delivered orders,96478,96478,True
 buckets: eligible customers summed over first_delay_bucket,56188,56188,True
 buckets: 180d repeaters summed over first_delay_bucket,1112,1112,True
+reviews: on-time + late reviewed in-window orders = reviewed delivered in-window orders with a delivery date,95560,95560,True
+reviews: bad reviews (1-2) on time + late = all bad reviews in that population,12228,12228,True

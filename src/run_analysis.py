@@ -7,7 +7,8 @@ Each query in a file starts with a marker line:
     -- name: <query_name>
 Everything from one marker to the next is one query. Text before the first
 marker (the file header) is ignored. Each result is saved to
-outputs/phase4/<query_name>.csv, and the row count and first rows are printed.
+outputs/phase4/<query_name>.csv (sql/05_ .. 09_) or outputs/phase5/<query_name>.csv
+(sql/10_ and later), and the row count and first rows are printed.
 
 Read-only: every query runs inside a transaction started with
 SET TRANSACTION READ ONLY, so PostgreSQL itself refuses any statement that
@@ -25,7 +26,20 @@ from sqlalchemy import text
 
 from src.db import REPO_ROOT, get_engine
 
-OUTPUT_DIR = REPO_ROOT / "outputs" / "phase4"
+OUTPUTS = REPO_ROOT / "outputs"
+
+# Which phase folder a SQL file's results go to, chosen by the file's number:
+# 05-09 are the Phase 4 analysis files, 10 and later belong to Phase 5.
+# Keeps Phase 4 results where they were and Phase 5 results apart.
+PHASE5_FIRST_FILE_NUMBER = 10
+
+
+def output_dir_for(sql_path: Path) -> Path:
+    """outputs/phase4 for sql/05_..09_, outputs/phase5 for sql/10_ and later."""
+    match = re.match(r"(\d+)_", sql_path.name)
+    if match and int(match.group(1)) >= PHASE5_FIRST_FILE_NUMBER:
+        return OUTPUTS / "phase5"
+    return OUTPUTS / "phase4"
 
 # A line that is exactly "-- name: something" (letters, digits, underscores).
 # re.MULTILINE makes ^ and $ match at every line, not just the whole file.
@@ -58,11 +72,14 @@ def main(paths: list[str]) -> None:
         raise SystemExit(1)
 
     # Collect every query first, so a bad file stops the run before anything is saved.
-    all_queries: list[tuple[str, str]] = []
+    # Each entry: (query name, sql, folder its CSV goes to).
+    all_queries: list[tuple[str, str, Path]] = []
     for p in paths:
         path = (REPO_ROOT / p) if not Path(p).is_absolute() else Path(p)
-        all_queries += split_queries(path.read_text(encoding="utf-8"), p)
-    names = [n for n, _ in all_queries]
+        out_dir = output_dir_for(path)
+        all_queries += [(name, sql, out_dir)
+                        for name, sql in split_queries(path.read_text(encoding="utf-8"), p)]
+    names = [n for n, _, _ in all_queries]
     duplicates = sorted({n for n in names if names.count(n) > 1})
     if duplicates:
         print(f"Duplicate query names: {duplicates}")
@@ -74,9 +91,8 @@ def main(paths: list[str]) -> None:
         print(f"Setup problem: {err}")
         raise SystemExit(1)
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     with pd.option_context("display.width", 200, "display.max_columns", 20):
-        for name, sql in all_queries:
+        for name, sql, out_dir in all_queries:
             try:
                 with engine.connect() as conn:
                     # First statement of the transaction: make it read-only.
@@ -93,7 +109,8 @@ def main(paths: list[str]) -> None:
             # (2 -> 2.0). convert_dtypes() switches such columns back to a
             # nullable integer type, so the CSV shows 2 and an empty cell.
             df = df.convert_dtypes()
-            out = OUTPUT_DIR / f"{name}.csv"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out = out_dir / f"{name}.csv"
             df.to_csv(out, index=False)
             print(f"\n=== {name}: {len(df):,} rows -> {out.relative_to(REPO_ROOT)}")
             print(df.head(10).to_string(index=False))

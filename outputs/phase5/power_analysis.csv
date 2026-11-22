@@ -1,0 +1,2 @@
+late_n,on_time_n,on_time_rate_pct,late_rate_pct,observed_gap_pp,observed_cohens_h,alpha,target_power,mde_cohens_h,mde_late_rate_if_lower_pct,mde_gap_lower_pp,mde_late_rate_if_higher_pct,mde_gap_higher_pp,power_for_observed_gap,late_n_needed_for_80pct_power_same_ratio,on_time_n_needed_same_ratio
+3928,52258,2.0093,1.5784,0.4309,0.0325,0.05,0.8,0.0464,1.4107,0.5986,2.711,0.7017,0.5023,7979.8534,106163.7423

@@ -1,0 +1,4 @@
+delivery_group,reviewed_orders,bad_reviews,bad_review_rate_pct,gap_vs_on_time_pp,ratio_vs_on_time
+1 on time,89182,8247,9.25,0.0,1.0
+2 late,6378,3981,62.42,53.17,6.75
+3 all,95560,12228,12.8,3.55,1.38

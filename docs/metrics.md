@@ -1,6 +1,6 @@
 # Metric definitions
 
-> Final as of Phase 2 (2026-11-20); metrics 12–17 added in Phase 4A and 18–24 in Phase 4B (2026-11-21), implemented in `sql/04_base_views.sql` and `sql/05_` … `sql/09_*.sql`. Definitions are based on `notebooks/01_data_profiling.ipynb` and implemented in `notebooks/02_cleaning.ipynb`.
+> Final as of Phase 2 (2026-11-20); metrics 12–17 added in Phase 4A and 18–24 in Phase 4B (2026-11-21), 25–27 in Phase 5 (2026-11-22), implemented in `sql/04_base_views.sql` and `sql/05_` … `sql/09_*.sql`. Definitions are based on `notebooks/01_data_profiling.ipynb` and implemented in `notebooks/02_cleaning.ipynb`.
 > This file is the single source of truth for metric definitions. Any change must also be logged in `docs/decisions_log.md`.
 
 Table names follow the processed files in `data/processed/` (`orders`, `order_items`, `customers`, `order_reviews`, ...). See `docs/data_dictionary.md`.
@@ -140,11 +140,31 @@ Order-value bands are round numbers around the eligible first-order quartiles (p
 ## 23. State opportunity measure (ESTIMATE)
 **Definition:** per state (≥ 500 eligible customers): eligible customers whose first order was late × (national 180-day repeat rate of on-time first orders − national rate of late first orders). States are ranked by it with `RANK()`.
 **In plain English:** how many extra repeat customers the state would have if its late first orders had repeated like on-time ones.
-**Assumptions:** the gap is caused by lateness (untested; Phase 5); the national gap applies in every state (state-level late cells are too small for their own gap).
+**Assumptions:** the gap is caused by lateness; the national gap applies in every state (state-level late cells are too small for their own gap).
+**Phase 5 result:** the gap itself is not statistically significant (0.43 pp, 95% CI −0.80 to +0.02 for late − on time, p = 0.062), so this measure and the late-delivery estimate in metric 24 are upper-bound illustrations, not confirmed effects (docs/claims_evidence.md, claim 5).
 
 ## 24. Impact estimates (ESTIMATE)
 - **Late delivery (`q09_04`):** extra repeaters = late-first eligible customers × (on-time rate − late rate); extra product revenue = extra repeaters × median second-visit product value (metric 22). Assumes the gap is caused by lateness; 180-day horizon; eligible customers only; one second visit per extra repeater; product revenue, not margin.
 - **Second-purchase campaign (`q09_05`):** extra repeaters = customers in "Promising high-value one-timers" × assumed conversion rate (1%, 2%, 5%); extra product revenue = × median second-visit product value. The conversion rates are assumptions, not measured. The median value is from all repeaters, not only high-value ones. Campaign cost is not included.
+
+## 25. Bad review
+**Definition:** an order whose review score (metric 10) is 1 or 2. Bad-review rate = bad reviews ÷ reviewed orders, × 100. In Phase 5 the population is in-window delivered orders with a review **and** a delivery date (95,560 orders), so on time / late is known for every order.
+**In plain English:** a clearly unhappy customer. 3 stars is treated as neutral, not bad.
+**Implemented in:** `sql/10_review_impact.sql` (`review_score <= 2`), `notebooks/03_statistical_tests.ipynb`.
+
+## 26. Excess bad reviews (ESTIMATE)
+**Definition:** for a group (all of Olist, a customer state, a seller, or a seller-state → customer-state route): bad reviews on late orders − late reviewed orders × the group's **on-time** bad-review rate. Thresholds: states ≥ 500 reviewed orders, sellers ≥ 50, routes ≥ 200. Shares are taken over the **national** excess (`q10_05`), so all queries use the same base; a second column shares over the groups shown.
+**In plain English:** how many more bad reviews the late orders got than they would have if they had been reviewed like that group's on-time orders.
+**Assumptions:** lateness causes the difference (association, not proven); late orders would otherwise behave like the group's on-time orders. Each group uses its own baseline and small groups are left out, so group excesses do not add up to the national figure. A group can have negative excess.
+
+## 27. Statistical test conventions (Phase 5)
+- Significance level **alpha = 0.05**; all tests **two-sided**.
+- Every test reports an **effect size with a 95% CI** and n, not only a p-value.
+- CIs: **Wilson** for one rate; **Newcombe** for a difference of two rates; **log method** for a relative risk; **Wald** (model standard errors) for logistic odds ratios; the Mantel–Haenszel CI from statsmodels `StratifiedTable`.
+- Chi-square tests without Yates' continuity correction (all expected counts ≥ 6.5 in our tables).
+- Multiple testing: **Holm** adjustment across the 15 tests in `outputs/phase5/test_results.csv`; conclusions use the Holm p-value. The power analysis and the extra model terms (e.g. delivery_days) are not in the Holm family.
+- Grouping rules for tests follow metric 17: states ≥ 500 and categories ≥ 300 eligible customers; smaller ones are left out of state/category tests, or pooled as `other` in the logistic regression.
+- Customer-level tests use 180-day-eligible customers and first-order attributes; order-level tests use in-window delivered orders with a delivery date.
 
 ---
 

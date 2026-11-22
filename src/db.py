@@ -79,3 +79,22 @@ def get_engine() -> Engine:
     # pool_pre_ping checks a pooled connection is still alive before using it,
     # which avoids confusing errors after the laptop sleeps or Postgres restarts.
     return create_engine(url, pool_pre_ping=True)
+
+
+def read_sql_readonly(sql: str, engine: Engine | None = None) -> "pd.DataFrame":
+    """Run one SELECT inside a READ ONLY transaction and return a DataFrame.
+
+    SET TRANSACTION READ ONLY makes PostgreSQL itself refuse any statement
+    that would change data, and the transaction is rolled back afterwards.
+    Same pattern as src/run_analysis.py, packaged for notebooks.
+    """
+    # Imported here so scripts that only need get_engine() do not load pandas.
+    import pandas as pd
+    from sqlalchemy import text
+
+    engine = engine or get_engine()
+    with engine.connect() as conn:
+        conn.execute(text("set transaction read only"))  # first statement of the transaction
+        df = pd.read_sql(text(sql), conn)
+        conn.rollback()
+    return df

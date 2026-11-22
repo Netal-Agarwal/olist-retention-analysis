@@ -286,6 +286,39 @@ with checks (check_name, expected, actual) as (
            (select sum(n)::bigint from (select count(*) filter (where is_repeat_180d) as n
                                           from analysis.v_customers
                                          where eligible_180d group by first_delay_bucket) g)
+
+    -- -------------------------------------------------------------------------
+    -- 9. Review-impact population (Phase 5, sql/10_review_impact.sql).
+    -- Expected values are recomputed straight from clean.* (not from the
+    -- views), so they independently confirm the view population: reviewed,
+    -- delivered, in-window orders with a customer delivery date. clean.order_reviews
+    -- has one row per order (primary key), so the join cannot duplicate orders.
+    -- Actual = on-time rows + late rows from v_orders: every such order must be
+    -- exactly one of the two (no NULL is_late slips through, none counted twice).
+    -- -------------------------------------------------------------------------
+    union all
+    select 'reviews: on-time + late reviewed in-window orders = reviewed delivered in-window orders with a delivery date',
+           (select count(*)
+              from clean.orders o
+              join clean.order_reviews r on r.order_id = o.order_id
+             where o.is_delivered and o.in_analysis_window
+               and o.order_delivered_customer_date is not null),
+           (select count(*) filter (where not is_late) + count(*) filter (where is_late)
+              from analysis.v_orders
+             where in_analysis_window and review_score is not null)
+    union all
+    -- Same reconciliation for bad reviews (score 1-2, docs/metrics.md metric 25).
+    select 'reviews: bad reviews (1-2) on time + late = all bad reviews in that population',
+           (select count(*)
+              from clean.orders o
+              join clean.order_reviews r on r.order_id = o.order_id
+             where o.is_delivered and o.in_analysis_window
+               and o.order_delivered_customer_date is not null
+               and r.review_score <= 2),
+           (select count(*) filter (where not is_late and review_score <= 2)
+                 + count(*) filter (where is_late and review_score <= 2)
+              from analysis.v_orders
+             where in_analysis_window and review_score is not null)
 )
 
 select check_name,
