@@ -4,16 +4,17 @@ Run from the repo root:
     .venv\\Scripts\\python -m src.load_to_postgres
 
 What it does, all inside ONE database transaction (all or nothing):
-  0. drops the analysis.* views (children first, no CASCADE). They read the
-     clean.* tables, and 01_schema.sql drops those tables without CASCADE, so
-     the views must go first or the table drop would fail.
+  0. drops the report.* and analysis.* views (children first, no CASCADE).
+     They read the clean.* tables, and 01_schema.sql drops those tables
+     without CASCADE, so the views must go first or the table drop would fail.
   1. runs sql/01_schema.sql  (drop + recreate the clean.* tables)
   2. runs sql/02_indexes.sql (indexes on join/filter columns)
   3. for each table, in dependency order:
        - checks the CSV header matches the table's columns,
        - bulk-loads the file with PostgreSQL COPY,
        - prints how many rows are now in the table.
-  4. recreates the analysis.* views by running sql/04_base_views.sql.
+  4. recreates the views by running sql/04_base_views.sql (analysis.*) and
+     sql/11_report_views.sql (report.*, the Power BI layer).
 If anything fails, nothing is kept: the database looks exactly as before.
 
 Why COPY instead of row-by-row INSERTs?
@@ -190,9 +191,9 @@ def main() -> None:
             raise LoadError("Connected to the wrong database; expected 'olist'.")
 
         # Step 0: the views depend on clean.* tables, so drop them first.
-        current_step = "dropping analysis views"
+        current_step = "dropping report and analysis views"
         drop_views(cur)
-        print("Dropped analysis views (if they existed)")
+        print("Dropped report and analysis views (if they existed)")
 
         for sql_file in ["01_schema.sql", "02_indexes.sql"]:
             current_step = f"running sql/{sql_file}"
@@ -222,15 +223,15 @@ def main() -> None:
             print(f"{table:<16}{cur.fetchone()[0]:>12,}")
 
         # Step 4: rebuild the views on top of the freshly loaded tables.
-        current_step = "running sql/04_base_views.sql"
+        current_step = "running sql/04_base_views.sql and sql/11_report_views.sql"
         create_views(cur)
-        print("\nRan sql/04_base_views.sql")
+        print("\nRan sql/04_base_views.sql and sql/11_report_views.sql")
         print_view_counts(cur)
 
         # Only now, with every step done, make the changes permanent.
         current_step = "committing"
         conn.commit()
-        print("\nLoad committed. All 8 tables are in the clean schema; analysis views rebuilt.")
+        print("\nLoad committed. All 8 tables are in the clean schema; analysis and report views rebuilt.")
 
     except LoadError as err:
         conn.rollback()

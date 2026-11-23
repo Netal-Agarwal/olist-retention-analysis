@@ -3,7 +3,8 @@
 -- Purpose : prove the load into the clean schema is complete and correct.
 -- Business question: "Can we trust the database copy of the data?" Every
 --           Phase 4+ number depends on the answer being yes.
--- Tables  : all 8 clean.* tables, and the analysis.* views (section 7).
+-- Tables  : all 8 clean.* tables, the analysis.* views (sections 7-9) and the
+--           report.* views (section 10, the Power BI layer).
 --           The views must exist first (src.create_views or src.load_to_postgres).
 --
 -- One query, runnable as-is in pgAdmin. Each row is one check:
@@ -12,6 +13,9 @@
 -- each one. Sources:
 --   [CS] outputs/phase2_cleaning_summary.csv   (section,metric)
 --   [PS] outputs/phase2_profile_summary.csv    (metric)
+--   [Q4] outputs/phase4/<query>.csv            (column)
+--   [Q5] outputs/phase5/<query>.csv            (column)
+--   [CE] docs/claims_evidence.md               (claim number)
 -- src/run_quality_checks.py runs this, saves outputs/phase3_quality_checks.csv
 -- and fails if any check does not pass.
 -- =============================================================================
@@ -319,6 +323,224 @@ with checks (check_name, expected, actual) as (
                  + count(*) filter (where is_late and review_score <= 2)
               from analysis.v_orders
              where in_analysis_window and review_score is not null)
+
+    -- -------------------------------------------------------------------------
+    -- 10. Report views (Phase 6, sql/11_report_views.sql), read by Power BI.
+    -- Prove the star schema and the pre-aggregated views reproduce the
+    -- Phase 4/5 outputs, and that every relationship Power BI will use has a
+    -- unique key on the dimension side and no orphan rows on the fact side.
+    -- Money is compared in cents and decimals in tenths/hundredths, because
+    -- the expected and actual columns are whole numbers (bigint).
+    -- -------------------------------------------------------------------------
+    -- Fact table: grain and money.
+    union all
+    select 'report: fact_orders rows = in-window delivered orders', 96211,  -- [Q4] q07_01_delivery_overview,orders
+           (select count(*) from report.fact_orders)
+    union all
+    select 'report: fact_orders duplicate order_id rows', 0,  -- grain = one row per order
+           (select count(*) - count(distinct order_id) from report.fact_orders)
+    union all
+    -- Expected recomputed from analysis.v_orders: no row lost or doubled.
+    select 'report: fact product_value total = in-window v_orders total (cents)',
+           (select (sum(product_value) * 100)::bigint from analysis.v_orders where in_analysis_window),
+           (select (sum(product_value) * 100)::bigint from report.fact_orders)
+    union all
+    -- R$13,181,027.13 = sum of product_revenue over the 20 months.
+    select 'report: fact product_value total = sum of monthly product revenue (cents)', 1318102713,  -- [Q4] q05_06_monthly_trend,product_revenue (sum)
+           (select (sum(product_value) * 100)::bigint from report.fact_orders)
+
+    -- Dimensions: row counts and unique keys (Power BI's "one" side must be unique).
+    union all
+    select 'report: dim_customer rows = customers with a delivered order', 93358,  -- [PS] customers_with_delivered_order
+           (select count(*) from report.dim_customer)
+    union all
+    select 'report: dim_customer duplicate customer_unique_id', 0,
+           (select count(*) - count(distinct customer_unique_id) from report.dim_customer)
+    union all
+    select 'report: dim_date rows = days in the analysis window', 608,  -- metrics.md metric 11: 2017-01-01 .. 2018-08-31 = 365 + 243 days
+           (select count(*) from report.dim_date)
+    union all
+    select 'report: dim_date duplicate date', 0,
+           (select count(*) - count(distinct date) from report.dim_date)
+    union all
+    -- A continuous calendar: one row per day from the first to the last date.
+    select 'report: dim_date has no missing days',
+           (select (max(date) - min(date) + 1)::bigint from report.dim_date),
+           (select count(*) from report.dim_date)
+    union all
+    select 'report: dim_category duplicate main_category', 0,
+           (select count(*) - count(distinct main_category) from report.dim_category)
+    union all
+    select 'report: dim_seller rows = sellers', 3095,  -- [CS] reconciliation,sellers_processed_rows
+           (select count(*) from report.dim_seller)
+    union all
+    select 'report: dim_seller duplicate seller_id', 0,
+           (select count(*) - count(distinct seller_id) from report.dim_seller)
+    union all
+    -- 26 states + the Federal District (IBGE list of federative units).
+    select 'report: dim_state rows (27 federative units)', 27,
+           (select count(*) from report.dim_state)
+    union all
+    select 'report: dim_state duplicate state_code', 0,
+           (select count(*) - count(distinct state_code) from report.dim_state)
+
+    -- Orphans: every fact row must find its row in each dimension (LEFT JOIN ... IS NULL).
+    union all
+    select 'report: fact rows without dim_customer', 0,
+           (select count(*) from report.fact_orders f
+              left join report.dim_customer d on d.customer_unique_id = f.customer_unique_id
+             where d.customer_unique_id is null)
+    union all
+    select 'report: fact rows without dim_date', 0,
+           (select count(*) from report.fact_orders f
+              left join report.dim_date d on d.date = f.purchase_date
+             where d.date is null)
+    union all
+    select 'report: fact rows without dim_category', 0,
+           (select count(*) from report.fact_orders f
+              left join report.dim_category d on d.main_category = f.main_category
+             where d.main_category is null)
+    union all
+    select 'report: fact rows without dim_state', 0,
+           (select count(*) from report.fact_orders f
+              left join report.dim_state d on d.state_code = f.customer_state
+             where d.state_code is null)
+    union all
+    select 'report: fact rows without dim_seller', 0,
+           (select count(*) from report.fact_orders f
+              left join report.dim_seller d on d.seller_id = f.main_seller_id
+             where d.seller_id is null)
+
+    -- Customer measures, computed from dim_customer the way the DAX measures do.
+    union all
+    select 'report: dim_customer in-window cohort customers', 93094,  -- [Q4] q05_01_headline,cohort_customers
+           (select count(*) from report.dim_customer where in_window_cohort)
+    union all
+    select 'report: dim_customer lifetime repeaters (cohort)', 2004,  -- [Q4] q05_01_headline,lifetime_repeaters
+           (select count(*) from report.dim_customer where in_window_cohort and is_repeat_lifetime)
+    union all
+    select 'report: dim_customer 180d eligible customers', 56188,  -- [Q4] q05_01_headline,eligible_180d_customers
+           (select count(*) from report.dim_customer where eligible_180d)
+    union all
+    select 'report: dim_customer 180d repeaters', 1112,  -- [Q4] q05_01_headline,repeaters_180d
+           (select count(*) from report.dim_customer where is_repeat_180d)
+    union all
+    select 'report: dim_customer segment Promising high-value one-timers', 14533,  -- [Q4] q06_01_segment_summary,customers
+           (select count(*) from report.dim_customer where segment = 'Promising high-value one-timers')
+    union all
+    -- All 7 segment sizes must equal Phase 4A. Counts the segments whose size
+    -- differs from q06_01 (expected none). Proves the stack-and-collapse build
+    -- of dim_customer carries the RFM columns over correctly.
+    select 'report: dim_customer segments whose size differs from q06_01', 0,  -- [Q4] q06_01_segment_summary,customers
+           (select count(*)
+              from (values ('Lapsed high-value one-timers', 14031),
+                           ('Promising high-value one-timers', 14533),
+                           ('Middle one-timers', 18245),
+                           ('Lapsed low-value one-timers', 22630),
+                           ('Recent low-value one-timers', 21651),
+                           ('Champions', 831),
+                           ('Loyal repeaters', 1173)) as e(segment, customers)
+              left join (select segment, count(*) as customers
+                           from report.dim_customer group by segment) a
+                     on a.segment = e.segment
+             where a.customers is distinct from e.customers)
+    union all
+    -- Every in-window cohort customer has exactly one first order, and it is
+    -- inside the window, so the fact's first orders = the cohort size.
+    select 'report: fact first orders = in-window cohort customers', 93094,  -- [Q4] q05_01_headline,cohort_customers
+           (select count(*) from report.fact_orders where is_first_order)
+    union all
+    -- Segments exist only inside the cohort (93,358 - 93,094 = 264 without one).
+    select 'report: dim_customer rows with a segment = cohort customers', 93094,  -- [Q4] q05_01_headline,cohort_customers
+           (select count(*) from report.dim_customer where segment is not null)
+
+    -- Review measures, computed from fact_orders the way the DAX measures do.
+    union all
+    select 'report: fact on-time reviewed orders', 89182,  -- [Q5] q10_01_bad_review_gap,reviewed_orders (1 on time)
+           (select count(*) from report.fact_orders where has_review and not is_late)
+    union all
+    select 'report: fact on-time bad reviews', 8247,  -- [Q5] q10_01_bad_review_gap,bad_reviews (1 on time)
+           (select count(*) from report.fact_orders where is_bad_review and not is_late)
+    union all
+    select 'report: fact late reviewed orders', 6378,  -- [Q5] q10_01_bad_review_gap,reviewed_orders (2 late)
+           (select count(*) from report.fact_orders where has_review and is_late)
+    union all
+    select 'report: fact late bad reviews', 3981,  -- [Q5] q10_01_bad_review_gap,bad_reviews (2 late)
+           (select count(*) from report.fact_orders where is_bad_review and is_late)
+    union all
+    -- Tolerance: compared in TENTHS, i.e. equal after rounding to 1 decimal
+    -- (|actual - 3,391.2| < 0.05), the precision of the published figure.
+    select 'report: total excess bad reviews (tenths, tolerance 0.05)', 33912,  -- [Q5] q10_05_excess_total,excess_bad_reviews 3391.2
+           (select round(10 * (count(*) filter (where is_late and is_bad_review)
+                             - count(*) filter (where is_late and has_review)
+                               * (1.0 * count(*) filter (where not is_late and is_bad_review)
+                                      / count(*) filter (where not is_late and has_review))))::bigint
+              from report.fact_orders)
+    union all
+    select 'report: agg_excess_bad_reviews_state RJ excess (tenths)', 9054,  -- [Q5] q10_02_excess_bad_reviews_by_state,excess_bad_reviews RJ 905.4
+           (select round(10 * excess_bad_reviews)::bigint
+              from report.agg_excess_bad_reviews_state where state = 'RJ')
+    union all
+    select 'report: agg_excess_bad_reviews_state rows', 17,  -- [Q5] q10_02 (17 states with >= 500 reviewed orders)
+           (select count(*) from report.agg_excess_bad_reviews_state)
+    union all
+    select 'report: agg_excess_bad_reviews_seller rows (top 20)', 20,  -- [Q5] q10_03 (20 rows)
+           (select count(*) from report.agg_excess_bad_reviews_seller)
+    union all
+    select 'report: agg_excess_bad_reviews_route SP -> RJ excess (tenths)', 7142,  -- [Q5] q10_04_excess_bad_reviews_by_route,excess_bad_reviews 714.2
+           (select round(10 * excess_bad_reviews)::bigint
+              from report.agg_excess_bad_reviews_route where route = 'SP -> RJ')
+    union all
+    select 'report: agg_bad_review_by_delay reviewed orders total', 95560,  -- [Q5] q10_01_bad_review_gap,reviewed_orders (3 all)
+           (select sum(reviewed_orders)::bigint from report.agg_bad_review_by_delay)
+    union all
+    select 'report: agg_bad_review_by_delay bad reviews total', 12228,  -- [Q5] q10_01_bad_review_gap,bad_reviews (3 all)
+           (select sum(bad_reviews)::bigint from report.agg_bad_review_by_delay)
+
+    -- Retention aggregates.
+    union all
+    -- 20 cohorts (2017-01 .. 2018-08) x 13 months (0..12).
+    select 'report: agg_cohort_retention cells', 260,  -- [Q4] q05_03_cohort_retention (260 rows)
+           (select count(*) from report.agg_cohort_retention)
+    union all
+    -- Censored cells: 1 + 2 + ... + 12 = 78 (cohorts 2017-09 .. 2018-08).
+    select 'report: agg_cohort_retention censored (NULL) cells', 78,  -- [Q4] q05_03_cohort_retention (empty retention_pct)
+           (select count(*) from report.agg_cohort_retention where retention_pct is null)
+    union all
+    select 'report: agg_time_to_second customers total', 2004,  -- [Q4] q05_02_time_to_second,customers (bucket rows)
+           (select sum(customers)::bigint from report.agg_time_to_second)
+    union all
+    select 'report: agg_time_to_second median days', 74,  -- [Q4] q05_02_time_to_second,days (median)
+           (select max(median_days)::bigint from report.agg_time_to_second)
+    union all
+    select 'report: agg_repeat_by_category rows (>= 300 eligible)', 24,  -- [Q4] q05_05_repeat_by_category (24 rows)
+           (select count(*) from report.agg_repeat_by_category)
+    union all
+    -- Wilson CIs in hundredths of a percentage point, against the notebook.
+    select 'report: agg_repeat_by_review 5-star CI low (x100)', 197,  -- [CE] claim 6: 2.12 (CI 1.97-2.28)
+           (select round(100 * ci_low_pct)::bigint from report.agg_repeat_by_review where sort_order = 5)
+    union all
+    select 'report: agg_repeat_by_review 5-star CI high (x100)', 228,  -- [CE] claim 6
+           (select round(100 * ci_high_pct)::bigint from report.agg_repeat_by_review where sort_order = 5)
+    union all
+    select 'report: agg_repeat_by_category fashion_bags_accessories CI low (x100)', 241,  -- [CE] claim 11: 3.30 (CI 2.41-4.50)
+           (select round(100 * ci_low_pct)::bigint from report.agg_repeat_by_category
+             where main_category = 'fashion_bags_accessories')
+    union all
+    select 'report: agg_repeat_by_category fashion_bags_accessories CI high (x100)', 450,  -- [CE] claim 11
+           (select round(100 * ci_high_pct)::bigint from report.agg_repeat_by_category
+             where main_category = 'fashion_bags_accessories')
+
+    -- Campaign baseline (inputs of the What-if estimate).
+    union all
+    select 'report: agg_campaign_baseline segment customers', 14533,  -- [Q4] q09_05_impact_second_purchase_campaign,segment_customers
+           (select segment_customers from report.agg_campaign_baseline)
+    union all
+    select 'report: agg_campaign_baseline median second-visit value (cents)', 8990,  -- [Q4] q09_05,median_second_visit_value 89.90
+           (select (median_second_visit_value * 100)::bigint from report.agg_campaign_baseline)
+    union all
+    select 'report: agg_campaign_baseline second visits', 1112,  -- [Q4] q09_05,n_second_visits
+           (select n_second_visits from report.agg_campaign_baseline)
 )
 
 select check_name,

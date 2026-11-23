@@ -297,3 +297,69 @@ Every delivered order has at least one item (0 with NULL `product_value`), and s
 | `r_score`, `m_score` | integer | NTILE(5); 5 = most recent / highest spend |
 | `f_flag` | text | `repeat` (≥ 2 purchase dates) or `one-time` |
 | `segment` | text | one of 7 segments (metrics.md 16) |
+
+---
+
+## Reporting views (`report.*`)
+
+Built by `sql/11_report_views.sql` (Phase 6) for Power BI, created by `src/create_views.py` after the analysis views and rebuilt by every `src/load_to_postgres.py` run. A star schema (one fact table, five dimensions) plus pre-aggregated result tables. Row counts and the match with Phase 4/5 outputs are checked in `sql/03_quality_checks.sql` section 10. Relationships and DAX: `docs/powerbi/`.
+
+### `report.fact_orders`: one row per delivered order in the analysis window (96,211 rows; key `order_id`)
+
+| Column | Type | Meaning |
+|---|---|---|
+| `order_id` | text | key |
+| `customer_unique_id` | text | → `dim_customer` |
+| `purchase_date` | date | → `dim_date` |
+| `customer_state` | text | → `dim_state[state_code]` |
+| `main_seller_id`, `seller_state` | text | → `dim_seller`; the main seller's state |
+| `same_state` | boolean | seller state = customer state |
+| `main_category` | text | → `dim_category` |
+| `product_value`, `freight_value`, `order_value`, `freight_share` | numeric | as in `v_orders` (metrics 3, 9) |
+| `n_items` | bigint | item lines |
+| `delivery_days`, `delay_days`, `is_late` | numeric / integer / boolean | metrics 7–8; NULL for the 8 orders with no delivery date |
+| `delay_bucket`, `delay_bucket_sort` | text / integer | e.g. `early/on time` (1) … `15+ days late` (5): the `v_orders` bucket without its number prefix, plus the number for sorting |
+| `delivery_speed_bucket`, `delivery_speed_bucket_sort` | text / integer | `<=7 days` (1) … `>30 days` (5) |
+| `review_score` | integer | 1–5; NULL with no review |
+| `has_review` | boolean | review exists |
+| `is_bad_review` | boolean | score 1–2 (metric 25); **NULL when no review** |
+| `is_first_order` | boolean | the customer's first delivered order over the full history (93,094 true) |
+
+### `report.dim_customer`: one row per `customer_unique_id` with a delivered order (93,358 rows)
+
+| Column | Type | Meaning |
+|---|---|---|
+| `customer_unique_id` | text | key |
+| `in_window_cohort`, `eligible_180d`, `is_repeat_180d`, `is_repeat_lifetime`, `cohort_month` | | from `v_customers` (`is_repeat_180d` NULL when not eligible) |
+| `first_state`, `first_main_category`, `first_is_late`, `first_review_score` | | attributes of the first order |
+| `first_review_label`, `first_review_sort` | text / integer | `1 star` … `5 stars` (1–5), `No review` (6) |
+| `n_delivered_orders`, `total_product_value` | integer / numeric | from `v_customers` |
+| `r_score`, `m_score`, `f_flag`, `segment` | | from `v_customer_rfm`; **NULL for the 264 customers outside the in-window cohort** |
+
+### `report.dim_date`: one row per day, 2017-01-01 … 2018-08-31 (608 rows; key `date`)
+`date`, `year`, `quarter`, `month_number`, `month_name` (`January`), `year_month` (`2017-01`), `month_start`, `weekday` (`Monday`), `weekday_number` (ISO, 1 = Monday), `in_analysis_window` (all true).
+
+### `report.dim_category` (74 rows; key `main_category`)
+Distinct `category_name_english` from `clean.products`, incl. `unknown`.
+
+### `report.dim_seller` (3,095 rows; key `seller_id`)
+`seller_id`, `seller_state`, `seller_city` from `clean.sellers`.
+
+### `report.dim_state` (27 rows; key `state_code`)
+`state_code` (UF), `state_name`, `region` (North, Northeast, Center-West, Southeast, South). Hard-coded list of the 26 states + DF.
+
+### Pre-aggregated views (not related to the star schema in Power BI)
+
+| View | Rows | Reproduces | Extra columns |
+|---|---|---|---|
+| `agg_cohort_retention` | 260 | `q05_03` (78 censored cells NULL) | `cohort_label` (`YYYY-MM`) |
+| `agg_time_to_second` | 5 | `q05_02` bucket rows | `repeaters`, `p25_days`, `median_days`, `p75_days` on every row |
+| `agg_repeat_by_review` | 6 | `q07_08` | `review_label`, `sort_order`, Wilson `ci_low_pct` / `ci_high_pct` |
+| `agg_repeat_by_category` | 24 | `q05_05` | Wilson CI |
+| `agg_bad_review_by_delay` | 5 | `q07_06` | `delay_bucket_sort`, `is_late`, `bad_reviews`, `bad_review_rate_pct` (= `pct_1_2_star`), Wilson CI (median_score dropped) |
+| `agg_excess_bad_reviews_state` | 17 | `q10_02` | `state_name`, `region` |
+| `agg_excess_bad_reviews_seller` | 20 | `q10_03` | `seller_label` (`Seller` + first 8 characters of the id) |
+| `agg_excess_bad_reviews_route` | 15 | `q10_04` | – |
+| `agg_campaign_baseline` | 1 | inputs of `q09_05` | `segment_customers` 14,533, `n_second_visits` 1,112, `median_second_visit_value` 89.90 |
+
+CI columns are percentages with 2 decimals (95% Wilson interval, z = 1.959964).

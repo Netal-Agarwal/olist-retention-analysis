@@ -63,3 +63,53 @@ buckets: eligible customers summed over first_delay_bucket,56188,56188,True
 buckets: 180d repeaters summed over first_delay_bucket,1112,1112,True
 reviews: on-time + late reviewed in-window orders = reviewed delivered in-window orders with a delivery date,95560,95560,True
 reviews: bad reviews (1-2) on time + late = all bad reviews in that population,12228,12228,True
+report: fact_orders rows = in-window delivered orders,96211,96211,True
+report: fact_orders duplicate order_id rows,0,0,True
+report: fact product_value total = in-window v_orders total (cents),1318102713,1318102713,True
+report: fact product_value total = sum of monthly product revenue (cents),1318102713,1318102713,True
+report: dim_customer rows = customers with a delivered order,93358,93358,True
+report: dim_customer duplicate customer_unique_id,0,0,True
+report: dim_date rows = days in the analysis window,608,608,True
+report: dim_date duplicate date,0,0,True
+report: dim_date has no missing days,608,608,True
+report: dim_category duplicate main_category,0,0,True
+report: dim_seller rows = sellers,3095,3095,True
+report: dim_seller duplicate seller_id,0,0,True
+report: dim_state rows (27 federative units),27,27,True
+report: dim_state duplicate state_code,0,0,True
+report: fact rows without dim_customer,0,0,True
+report: fact rows without dim_date,0,0,True
+report: fact rows without dim_category,0,0,True
+report: fact rows without dim_state,0,0,True
+report: fact rows without dim_seller,0,0,True
+report: dim_customer in-window cohort customers,93094,93094,True
+report: dim_customer lifetime repeaters (cohort),2004,2004,True
+report: dim_customer 180d eligible customers,56188,56188,True
+report: dim_customer 180d repeaters,1112,1112,True
+report: dim_customer segment Promising high-value one-timers,14533,14533,True
+report: dim_customer segments whose size differs from q06_01,0,0,True
+report: fact first orders = in-window cohort customers,93094,93094,True
+report: dim_customer rows with a segment = cohort customers,93094,93094,True
+report: fact on-time reviewed orders,89182,89182,True
+report: fact on-time bad reviews,8247,8247,True
+report: fact late reviewed orders,6378,6378,True
+report: fact late bad reviews,3981,3981,True
+"report: total excess bad reviews (tenths, tolerance 0.05)",33912,33912,True
+report: agg_excess_bad_reviews_state RJ excess (tenths),9054,9054,True
+report: agg_excess_bad_reviews_state rows,17,17,True
+report: agg_excess_bad_reviews_seller rows (top 20),20,20,True
+report: agg_excess_bad_reviews_route SP -> RJ excess (tenths),7142,7142,True
+report: agg_bad_review_by_delay reviewed orders total,95560,95560,True
+report: agg_bad_review_by_delay bad reviews total,12228,12228,True
+report: agg_cohort_retention cells,260,260,True
+report: agg_cohort_retention censored (NULL) cells,78,78,True
+report: agg_time_to_second customers total,2004,2004,True
+report: agg_time_to_second median days,74,74,True
+report: agg_repeat_by_category rows (>= 300 eligible),24,24,True
+report: agg_repeat_by_review 5-star CI low (x100),197,197,True
+report: agg_repeat_by_review 5-star CI high (x100),228,228,True
+report: agg_repeat_by_category fashion_bags_accessories CI low (x100),241,241,True
+report: agg_repeat_by_category fashion_bags_accessories CI high (x100),450,450,True
+report: agg_campaign_baseline segment customers,14533,14533,True
+report: agg_campaign_baseline median second-visit value (cents),8990,8990,True
+report: agg_campaign_baseline second visits,1112,1112,True
